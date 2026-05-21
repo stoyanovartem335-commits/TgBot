@@ -79,6 +79,12 @@
       var name = document.createElement('div');
       name.className = 'plan-card__name';
       name.textContent = plan.label;
+      if (discountEnabled && discountPct > 0) {
+        var inlineDisc = document.createElement('span');
+        inlineDisc.className = 'plan-card__discount-inline';
+        inlineDisc.textContent = '-' + discountPct + '%';
+        name.appendChild(inlineDisc);
+      }
       info.appendChild(name);
 
       if (plan.description) {
@@ -91,23 +97,51 @@
       var priceWrap = document.createElement('div');
       priceWrap.className = 'plan-card__price-wrap';
 
-      if (discountEnabled && discountPct > 0) {
-        var discounted = Math.round(plan.price_rub * (100 - discountPct) / 100);
-        var currentPrice = document.createElement('span');
-        currentPrice.className = 'plan-card__price plan-card__price--current';
-        currentPrice.textContent = discounted + ' \u20BD';
-        priceWrap.appendChild(currentPrice);
+      // 1. Ruble price block
+      var rubBlock = document.createElement('div');
+      rubBlock.className = 'plan-card__price-block';
 
-        var oldPrice = document.createElement('span');
-        oldPrice.className = 'plan-card__price plan-card__price--old';
-        oldPrice.textContent = plan.price_rub + ' \u20BD';
-        priceWrap.appendChild(oldPrice);
+      if (discountEnabled && discountPct > 0) {
+        var discountedRub = Math.round(plan.price_rub * (100 - discountPct) / 100);
+        var currentPriceRub = document.createElement('span');
+        currentPriceRub.className = 'plan-card__price plan-card__price--current';
+        currentPriceRub.textContent = discountedRub + ' \u20BD';
+        rubBlock.appendChild(currentPriceRub);
+
+        var oldPriceRub = document.createElement('span');
+        oldPriceRub.className = 'plan-card__price plan-card__price--old';
+        oldPriceRub.textContent = plan.price_rub + ' \u20BD';
+        rubBlock.appendChild(oldPriceRub);
       } else {
-        var price = document.createElement('span');
-        price.className = 'plan-card__price';
-        price.textContent = plan.price_rub + ' \u20BD';
-        priceWrap.appendChild(price);
+        var priceRub = document.createElement('span');
+        priceRub.className = 'plan-card__price';
+        priceRub.textContent = plan.price_rub + ' \u20BD';
+        rubBlock.appendChild(priceRub);
       }
+      priceWrap.appendChild(rubBlock);
+
+      // 2. Stars price block
+      var starsBlock = document.createElement('div');
+      starsBlock.className = 'plan-card__price-block';
+
+      if (discountEnabled && discountPct > 0) {
+        var discountedStars = Math.round(plan.price_stars * (100 - discountPct) / 100);
+        var currentPriceStars = document.createElement('span');
+        currentPriceStars.className = 'plan-card__price plan-card__price--stars plan-card__price--current';
+        currentPriceStars.textContent = discountedStars + ' \u2b50';
+        starsBlock.appendChild(currentPriceStars);
+
+        var oldPriceStars = document.createElement('span');
+        oldPriceStars.className = 'plan-card__price plan-card__price--old';
+        oldPriceStars.textContent = plan.price_stars + ' \u2b50';
+        starsBlock.appendChild(oldPriceStars);
+      } else {
+        var priceStars = document.createElement('span');
+        priceStars.className = 'plan-card__price plan-card__price--stars';
+        priceStars.textContent = plan.price_stars + ' \u2b50';
+        starsBlock.appendChild(priceStars);
+      }
+      priceWrap.appendChild(starsBlock);
 
       inner.appendChild(info);
       inner.appendChild(priceWrap);
@@ -127,9 +161,36 @@
   }
 
   function selectPlan(plan) {
-    if (isWebApp && tg && typeof tg.sendData === 'function') {
-      var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub });
-      tg.sendData(payload);
+    if (isWebApp && tg && tg.initData) {
+      if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+      document.body.style.pointerEvents = 'none';
+      fetch('/api/select-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({
+          initData: tg.initData,
+          plan: plan.code
+        })
+      })
+      .then(function (res) {
+        document.body.style.pointerEvents = '';
+        if (res.ok) {
+          tg.close();
+        } else {
+          // Fallback to sendData
+          var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub });
+          tg.sendData(payload);
+        }
+      })
+      .catch(function () {
+        document.body.style.pointerEvents = '';
+        // Fallback to sendData
+        var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub });
+        tg.sendData(payload);
+      });
     } else {
       /* Not in WebApp — redirect to Telegram bot with /start payload */
       var startParam = 'buy_' + plan.code;
@@ -454,6 +515,14 @@
       if (!isNaN(index)) openLightbox(index);
     });
   });
+
+  /* Prevent browser ghost dragging on the carousel track */
+  var carouselTrack = document.getElementById('carouselTrack');
+  if (carouselTrack) {
+    carouselTrack.addEventListener('dragstart', function (e) {
+      e.preventDefault();
+    });
+  }
 
   if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
   if (lightboxPrev) lightboxPrev.addEventListener('click', function () { navigateLightbox(-1); });

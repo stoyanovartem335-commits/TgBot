@@ -56,6 +56,88 @@ async def site_json_handler(request: web.Request) -> web.Response:
     return web.json_response(data)
 
 
+def verify_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
+    """Verifies Telegram WebApp initData and returns the user dict if valid."""
+    from urllib.parse import parse_qsl
+    try:
+        parsed = dict(parse_qsl(init_data))
+        if "hash" not in parsed:
+            return None
+        
+        received_hash = parsed.pop("hash")
+        
+        # Sort key-value pairs alphabetically
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+        
+        # Secret key is SHA256 of bot token with constant string "WebAppData"
+        import hashlib
+        secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+        
+        # Compute expected hash
+        expected_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+        
+        if hmac.compare_digest(received_hash, expected_hash):
+            user_data = parsed.get("user")
+            if user_data:
+                return json.loads(user_data)
+        return None
+    except Exception as exc:
+        log.warning("verify_telegram_init_data error: %s", exc)
+        return None
+
+
+async def select_plan_api_handler(request: web.Request) -> web.Response:
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"ok": False, "error": "invalid json"}, status=400)
+
+    init_data = data.get("initData")
+    plan_code = data.get("plan")
+
+    if not init_data or not plan_code:
+        return web.json_response({"ok": False, "error": "missing initData or plan"}, status=400)
+
+    from .config import BOT_TOKEN
+    user_data = verify_telegram_init_data(init_data, BOT_TOKEN)
+    if not user_data:
+        return web.json_response({"ok": False, "error": "invalid initData"}, status=403)
+
+    user_id = user_data.get("id")
+    if not user_id:
+        return web.json_response({"ok": False, "error": "missing user id"}, status=400)
+
+    from .services.settings_service import get_plans_from_settings, get_active_discount, apply_discount
+    plans = await get_plans_from_settings()
+    plan = next((p for p in plans if p["code"] == plan_code), None)
+    if not plan:
+        return web.json_response({"ok": False, "error": "invalid plan code"}, status=400)
+
+    discount_enabled, discount_pct = await get_active_discount()
+    price_rub = plan["price_rub"]
+    if discount_enabled and discount_pct > 0:
+        price_rub = await apply_discount(price_rub, discount_pct)
+
+    from .keyboards import payment_methods_kb
+    text = (
+        "Вы выбрали:\n\n"
+        f"📦 <b>{plan['label']}</b>\n"
+        f"💵 Цена: <b>{price_rub} ₽</b>\n\n"
+        "Выберите способ оплаты:"
+    )
+
+    bot = request.app.get("bot")
+    if not bot:
+        return web.json_response({"ok": False, "error": "bot instance not found"}, status=500)
+
+    try:
+        await bot.send_message(user_id, text, reply_markup=payment_methods_kb(plan_code))
+        return web.json_response({"ok": True})
+    except Exception as exc:
+        log.error("Failed to send plan selection to user %s: %s", user_id, exc)
+        return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+
 async def triboote_success_handler(request: web.Request) -> web.Response:
     return web.Response(
         content_type="text/html",
@@ -127,11 +209,13 @@ async def _ngrok_skip_middleware(request: web.Request, handler):
 
 def build_app(bot: Bot) -> web.Application:
     app = web.Application(middlewares=[_ngrok_skip_middleware])
+    app["bot"] = bot
     app.router.add_get("/", index_handler)
     app.router.add_get("/index.html", index_handler)
     app.router.add_get("/health", health_handler)
     app.router.add_get("/api/plans", plans_json_handler)
     app.router.add_get("/api/site", site_json_handler)
+    app.router.add_post("/api/select-plan", select_plan_api_handler)
     app.router.add_get("/triboote/success", triboote_success_handler)
     app.router.add_post("/triboote/webhook", make_triboote_webhook_handler(bot))
     app.router.add_static("/static", path=str(WEBAPP_DIR), show_index=False)

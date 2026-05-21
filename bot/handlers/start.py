@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from aiogram import Router
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandObject, CommandStart
 from aiogram.types import Message
 
 from ..keyboards import main_menu_kb
+from ..services.settings_service import get_plans_from_settings, get_active_discount, apply_discount
 
 router = Router(name="start")
 
@@ -21,5 +22,26 @@ WELCOME = (
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message) -> None:
+async def cmd_start(message: Message, command: CommandObject) -> None:
+    args = command.args
+    if args and args.startswith("buy_"):
+        plan_code = args[4:]
+        plans = await get_plans_from_settings()
+        plan = next((p for p in plans if p["code"] == plan_code), None)
+        if plan:
+            discount_enabled, discount_pct = await get_active_discount()
+            price_rub = plan["price_rub"]
+            if discount_enabled and discount_pct > 0:
+                price_rub = await apply_discount(price_rub, discount_pct)
+            
+            from ..keyboards import payment_methods_kb
+            text = (
+                "Вы выбрали:\n\n"
+                f"📦 <b>{plan['label']}</b>\n"
+                f"💵 Цена: <b>{price_rub} ₽</b>\n\n"
+                "Выберите способ оплаты:"
+            )
+            await message.answer(text, reply_markup=payment_methods_kb(plan_code))
+            return
+
     await message.answer(WELCOME, reply_markup=main_menu_kb())

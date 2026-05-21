@@ -143,7 +143,7 @@ async def adm_set_price(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(plan_code=plan_code)
     await state.set_state(AdminFSM.waiting_price_rub)
     await call.message.answer(
-        f"\u041e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u043d\u043e\u0432\u0443\u044e \u0446\u0435\u043d\u0443 (\u20bd) \u0434\u043b\u044f <b>{PLAN_LABELS.get(plan_code, plan_code)}</b>:\n\u0422\u043e\u043b\u044c\u043a\u043e \u0446\u0435\u043b\u043e\u0435 \u0447\u0438\u0441\u043b\u043e."
+        f"Отправьте новую цену для <b>{PLAN_LABELS.get(plan_code, plan_code)}</b> в формате <code>рубли/звезды</code> (например, <code>199/150</code>):"
     )
 
 
@@ -151,45 +151,33 @@ async def adm_set_price(call: CallbackQuery, state: FSMContext) -> None:
 async def adm_save_price_rub(message: Message, state: FSMContext) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
-    try:
-        new_price = int(message.text.strip())
-    except ValueError:
-        await message.answer("\u041e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0446\u0435\u043b\u043e\u0435 \u0447\u0438\u0441\u043b\u043e.")
+    text = message.text.strip()
+    if "/" not in text:
+        await message.answer("Пожалуйста, отправьте цену в формате <code>рубли/звезды</code>, например: <code>199/150</code>")
         return
+    parts = text.split("/", 1)
+    try:
+        rub = int(parts[0].strip())
+        stars = int(parts[1].strip())
+        if rub < 0 or stars < 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("Обе цены должны быть положительными целыми числами в формате <code>рубли/звезды</code>, например: <code>199/150</code>")
+        return
+
     data = await state.get_data()
     plan_code = data.get("plan_code", "1m")
     settings = await get_settings()
     prices_rub = settings.get("prices_rub", {})
-    prices_rub[plan_code] = new_price
-    await update_settings({"prices_rub": prices_rub})
-    await state.update_data(rub_price=new_price)
-    await state.set_state(AdminFSM.waiting_price_stars)
-    await message.answer(
-        f"\u2705 \u0426\u0435\u043d\u0430 (\u20bd) \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0430: {new_price} \u20bd.\n\n"
-        f"\u0422\u0435\u043f\u0435\u0440\u044c \u043e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0446\u0435\u043d\u0443 \u0432 \u2b50 \u0434\u043b\u044f <b>{PLAN_LABELS.get(plan_code, plan_code)}</b>:"
-    )
-
-
-@router.message(AdminFSM.waiting_price_stars, F.text)
-async def adm_save_price_stars(message: Message, state: FSMContext) -> None:
-    if not _is_admin(message.from_user.id if message.from_user else None):
-        return
-    try:
-        new_price = int(message.text.strip())
-    except ValueError:
-        await message.answer("\u041e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0446\u0435\u043b\u043e\u0435 \u0447\u0438\u0441\u043b\u043e.")
-        return
-    data = await state.get_data()
-    plan_code = data.get("plan_code", "1m")
-    rub_price = data.get("rub_price", "?")
-    settings = await get_settings()
     prices_stars = settings.get("prices_stars", {})
-    prices_stars[plan_code] = new_price
-    await update_settings({"prices_stars": prices_stars})
+    prices_rub[plan_code] = rub
+    prices_stars[plan_code] = stars
+    await update_settings({"prices_rub": prices_rub, "prices_stars": prices_stars})
     await state.clear()
     await message.answer(
-        f"\u2705 \u0426\u0435\u043d\u044b \u0434\u043b\u044f {PLAN_LABELS[plan_code]} \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u044b:\n"
-        f"{rub_price} \u20bd / {new_price} \u2b50"
+        f"✅ Цены для {PLAN_LABELS.get(plan_code, plan_code)} успешно сохранены:\n"
+        f"💵 Рубли: <b>{rub} ₽</b>\n"
+        f"⭐ Telegram Stars: <b>{stars} ⭐</b>"
     )
 
 
@@ -202,18 +190,26 @@ async def adm_promo(call: CallbackQuery) -> None:
     discounts = settings.get("discounts", {})
     promotion = settings.get("promotion", {})
 
+    def is_true(val) -> bool:
+        if isinstance(val, str):
+            return val.lower() in ("true", "1", "yes", "on", "вкл")
+        return bool(val)
+
+    discount_enabled = is_true(discounts.get("enabled", False))
+    promo_enabled = is_true(promotion.get("enabled", False))
+
     text = (
-        "\U0001f3c6 <b>\u0410\u043a\u0446\u0438\u0438 \u0438 \u0441\u043a\u0438\u0434\u043a\u0438</b>\n\n"
-        f"\u0421\u043a\u0438\u0434\u043a\u0430: {'\u0412\u041a\u041b' if discounts.get('enabled') else '\u0412\u042b\u041a\u041b'} ({discounts.get('percentage', 0)}%)\n"
-        f"\u041f\u0440\u043e\u043c\u043e: {'\u0412\u041a\u041b' if promotion.get('enabled') else '\u0412\u042b\u041a\u041b'}\n"
-        f"\u0422\u0435\u043a\u0441\u0442: {promotion.get('text', '\u2014')}"
+        "🏆 <b>Акции и скидки</b>\n\n"
+        f"Скидка: {'ВКЛ' if discount_enabled else 'ВЫКЛ'} ({discounts.get('percentage', 0)}%)\n"
+        f"Промо: {'ВКЛ' if promo_enabled else 'ВЫКЛ'}\n"
+        f"Текст: {promotion.get('text', '—')}"
     )
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="\U0001f504 \u0421\u043a\u0438\u0434\u043a\u0430 " + ("\u0412\u041a\u041b" if discounts.get('enabled') else "\u0412\u042b\u041a\u041b"), callback_data="adm:toggle_discount")],
-        [InlineKeyboardButton(text="\U0001f504 \u041f\u0440\u043e\u043c\u043e " + ("\u0412\u041a\u041b" if promotion.get('enabled') else "\u0412\u042b\u041a\u041b"), callback_data="adm:toggle_promo")],
-        [InlineKeyboardButton(text="\U0001f4c8 \u0423\u0441\u0442. % \u0441\u043a\u0438\u0434\u043a\u0438", callback_data="adm:set_discount_pct")],
-        [InlineKeyboardButton(text="\u21a9\ufe0f \u041d\u0430\u0437\u0430\u0434", callback_data="adm:back")],
+        [InlineKeyboardButton(text="🔄 Выключить скидку" if discount_enabled else "🔄 Включить скидку", callback_data="adm:toggle_discount")],
+        [InlineKeyboardButton(text="🔄 Выключить промо" if promo_enabled else "🔄 Включить промо", callback_data="adm:toggle_promo")],
+        [InlineKeyboardButton(text="📈 Уст. % скидки", callback_data="adm:set_discount_pct")],
+        [InlineKeyboardButton(text="↩️ Назад", callback_data="adm:back")],
     ])
     await call.message.edit_text(text, reply_markup=kb)
 
@@ -225,9 +221,16 @@ async def adm_toggle_discount(call: CallbackQuery) -> None:
     await call.answer()
     settings = await get_settings()
     discounts = settings.get("discounts", {})
-    discounts["enabled"] = not discounts.get("enabled", False)
+    
+    def is_true(val) -> bool:
+        if isinstance(val, str):
+            return val.lower() in ("true", "1", "yes", "on", "вкл")
+        return bool(val)
+
+    current_state = is_true(discounts.get("enabled", False))
+    discounts["enabled"] = not current_state
     await update_settings({"discounts": discounts})
-    await call.answer("\u0421\u043a\u0438\u0434\u043a\u0430 " + ("\u0432\u043a\u043b\u044e\u0447\u0435\u043d\u0430" if discounts["enabled"] else "\u0432\u044b\u043a\u043b\u044e\u0447\u0435\u043d\u0430"))
+    await call.answer("Скидка " + ("включена" if discounts["enabled"] else "выключена"))
     await adm_promo(call)
 
 
@@ -238,9 +241,16 @@ async def adm_toggle_promo(call: CallbackQuery) -> None:
     await call.answer()
     settings = await get_settings()
     promo = settings.get("promotion", {})
-    promo["enabled"] = not promo.get("enabled", False)
+    
+    def is_true(val) -> bool:
+        if isinstance(val, str):
+            return val.lower() in ("true", "1", "yes", "on", "вкл")
+        return bool(val)
+
+    current_state = is_true(promo.get("enabled", False))
+    promo["enabled"] = not current_state
     await update_settings({"promotion": promo})
-    await call.answer("\u041f\u0440\u043e\u043c\u043e " + ("\u0432\u043a\u043b\u044e\u0447\u0435\u043d" if promo["enabled"] else "\u0432\u044b\u043a\u043b\u044e\u0447\u0435\u043d"))
+    await call.answer("Промо " + ("включено" if promo["enabled"] else "выключено"))
     await adm_promo(call)
 
 
@@ -250,7 +260,7 @@ async def adm_set_discount_pct(call: CallbackQuery, state: FSMContext) -> None:
         return
     await call.answer()
     await state.set_state(AdminFSM.waiting_discount_pct)
-    await call.message.answer("\u041e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u043d\u043e\u0432\u044b\u0439 \u043f\u0440\u043e\u0446\u0435\u043d\u0442 \u0441\u043a\u0438\u0434\u043a\u0438 (\u0446\u0435\u043b\u043e\u0435 \u0447\u0438\u0441\u043b\u043e, \u043d\u0430\u043f\u0440. 10):")
+    await call.message.answer("Отправьте новый процент скидки (целое число, напр. 10):")
 
 
 @router.message(AdminFSM.waiting_discount_pct, F.text)
@@ -262,14 +272,14 @@ async def adm_save_discount_pct(message: Message, state: FSMContext) -> None:
         if pct < 0 or pct > 100:
             raise ValueError
     except ValueError:
-        await message.answer("\u041e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0447\u0438\u0441\u043b\u043e \u043e\u0442 0 \u0434\u043e 100.")
+        await message.answer("Отправьте число от 0 до 100.")
         return
     settings = await get_settings()
     discounts = settings.get("discounts", {})
     discounts["percentage"] = pct
     await update_settings({"discounts": discounts})
     await state.clear()
-    await message.answer(f"\u2705 \u041f\u0440\u043e\u0446\u0435\u043d\u0442 \u0441\u043a\u0438\u0434\u043a\u0438 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d: {pct}%")
+    await message.answer(f"✅ Процент скидки установлен: {pct}%")
 
 
 @router.callback_query(F.data == "adm:stats")
@@ -280,24 +290,33 @@ async def adm_stats(call: CallbackQuery) -> None:
     total = await get_total_purchases()
     recent = await get_recent_purchases(5)
 
-    text = f"\U0001f4c8 <b>\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0430</b>\n\n\u0412\u0441\u0435\u0433\u043e \u043f\u043e\u043a\u0443\u043f\u043e\u043a: <b>{total}</b>\n\n"
+    text = f"📈 <b>Статистика</b>\n\nВсего покупок: <b>{total}</b>\n\n"
     if recent:
-        text += "\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u043f\u043e\u043a\u0443\u043f\u043a\u0438:\n"
+        text += "Последние покупки:\n"
         for r in recent:
             paid_at_raw = r.get('paid_at', '')
+            paid_at_str = '?'
             if paid_at_raw:
                 try:
-                    dt = datetime.fromisoformat(paid_at_raw)
+                    clean_dt = paid_at_raw
+                    if clean_dt.endswith('Z'):
+                        clean_dt = clean_dt[:-1] + '+00:00'
+                    dt = datetime.fromisoformat(clean_dt)
                     paid_at_str = dt.strftime('%d.%m.%Y | %H:%M')
                 except Exception:
-                    paid_at_str = paid_at_raw[:16]
-            else:
-                paid_at_str = '?'
+                    try:
+                        # Fail-safe manual split-based parsing
+                        parts = paid_at_raw.split('T')
+                        date_parts = parts[0].split('-')
+                        time_parts = parts[1].split(':')
+                        paid_at_str = f"{date_parts[2]}.{date_parts[1]}.{date_parts[0]} | {time_parts[0]}:{time_parts[1]}"
+                    except Exception:
+                        paid_at_str = paid_at_raw[:16]
             text += f"  {r.get('plan_code', '?')} | {r.get('payment_method', '?')} | {paid_at_str}\n"
 
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="\u21a9\ufe0f \u041d\u0430\u0437\u0430\u0434", callback_data="adm:back")],
+        [InlineKeyboardButton(text="↩️ Назад", callback_data="adm:back")],
     ])
     await call.message.edit_text(text, reply_markup=kb)
 
