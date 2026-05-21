@@ -315,40 +315,6 @@
       if (screenshots) screenshots.style.display = 'none';
     });
 
-  function getTranslateX(offset) {
-    if (offset === 0) return 0;
-    var gap = 15;
-    var sign = offset > 0 ? 1 : -1;
-    var absOffset = Math.abs(offset);
-    var widths = [320, 180, 160, 160, 160, 160, 160, 160];
-    var pos = 0;
-    for (var i = 0; i < absOffset; i++) {
-      var idx = Math.min(i, widths.length - 1);
-      var nextIdx = Math.min(i + 1, widths.length - 1);
-      pos += widths[idx] / 2 + gap + widths[nextIdx] / 2;
-    }
-    return pos * sign;
-  }
-
-  function applyItemStyle(item, offset, skipTransition) {
-    var styles = getItemStyles(offset);
-    var translateX = getTranslateX(offset);
-    if (skipTransition) {
-      item.style.transition = 'none';
-    }
-    item.style.transform = 'translateX(' + translateX + 'px) scale(' + styles.scale + ')';
-    item.style.opacity = styles.opacity;
-    item.style.width = styles.w + 'px';
-    item.style.height = styles.h + 'px';
-    item.style.zIndex = styles.zIndex;
-    item.style.marginLeft = (-(styles.w / 2)) + 'px';
-    item.style.marginTop = styles.mt + 'px';
-    if (skipTransition) {
-      void item.offsetHeight;
-      item.style.transition = '';
-    }
-  }
-
   function buildDots() {
     if (!carouselDots) return;
     carouselDots.innerHTML = '';
@@ -366,26 +332,10 @@
     }
   }
 
-  function getItemStyles(offset) {
-    var absOffset = Math.abs(offset);
-    if (offset === 0) {
-      return { scale: 1, opacity: 1, w: 320, h: 260, zIndex: 10, mt: -130 };
-    } else if (absOffset === 1) {
-      return { scale: 0.9, opacity: 0.55, w: 180, h: 150, zIndex: 5, mt: -75 };
-    } else {
-      return { scale: 0.82, opacity: 0.35, w: 160, h: 136, zIndex: 1, mt: -68 };
+  function updateCarousel() {
+    if (carouselTrack) {
+      carouselTrack.style.transform = 'translateX(-' + (carouselIndex * 100) + '%)';
     }
-  }
-
-  function updateCarousel(skipTransition) {
-    var items = document.querySelectorAll('.carousel__item');
-    items.forEach(function (item, i) {
-      var offset = i - carouselIndex;
-      if (offset > totalSlides / 2) offset -= totalSlides;
-      if (offset < -totalSlides / 2) offset += totalSlides;
-      applyItemStyle(item, offset, skipTransition);
-    });
-
     var dots = document.querySelectorAll('.carousel__dot');
     dots.forEach(function (dot, i) {
       dot.classList.toggle('active', i === carouselIndex);
@@ -393,73 +343,18 @@
   }
 
   function nextCarousel() {
-    var oldIndex = carouselIndex;
     carouselIndex = (carouselIndex + 1) % totalSlides;
-    animateCarouselTransition(oldIndex, carouselIndex, 1);
+    updateCarousel();
   }
 
   function prevCarousel() {
-    var oldIndex = carouselIndex;
     carouselIndex = (carouselIndex - 1 + totalSlides) % totalSlides;
-    animateCarouselTransition(oldIndex, carouselIndex, -1);
-  }
-
-  function animateCarouselTransition(fromIndex, toIndex, direction) {
-    var items = document.querySelectorAll('.carousel__item');
-
-    items.forEach(function (item, i) {
-      var currentOffset = i - fromIndex;
-      if (currentOffset > totalSlides / 2) currentOffset -= totalSlides;
-      if (currentOffset < -totalSlides / 2) currentOffset += totalSlides;
-
-      var nextOffset = i - toIndex;
-      if (nextOffset > totalSlides / 2) nextOffset -= totalSlides;
-      if (nextOffset < -totalSlides / 2) nextOffset += totalSlides;
-
-      var crossesBoundary = Math.abs(nextOffset - currentOffset) > totalSlides / 2;
-
-      if (crossesBoundary) {
-        var teleportOffset = direction > 0 ? currentOffset - totalSlides : currentOffset + totalSlides;
-        var teleportStyles = getItemStyles(teleportOffset);
-        var teleportTranslateX = getTranslateX(teleportOffset);
-        item.style.transition = 'none';
-        item.style.transform = 'translateX(' + teleportTranslateX + 'px) scale(' + teleportStyles.scale + ')';
-        item.style.opacity = teleportStyles.opacity;
-        item.style.width = teleportStyles.w + 'px';
-        item.style.height = teleportStyles.h + 'px';
-        item.style.zIndex = teleportStyles.zIndex;
-        item.style.marginLeft = (-(teleportStyles.w / 2)) + 'px';
-        item.style.marginTop = teleportStyles.mt + 'px';
-        void item.offsetHeight;
-      }
-    });
-
-    requestAnimationFrame(function () {
-      items.forEach(function (item, i) {
-        var offset = i - toIndex;
-        if (offset > totalSlides / 2) offset -= totalSlides;
-        if (offset < -totalSlides / 2) offset += totalSlides;
-        applyItemStyle(item, offset, false);
-      });
-    });
-
-    var dots = document.querySelectorAll('.carousel__dot');
-    dots.forEach(function (dot, i) {
-      dot.classList.toggle('active', i === toIndex);
-    });
+    updateCarousel();
   }
 
   function setCarousel(index) {
-    if (index === carouselIndex) return;
-    var diff = index - carouselIndex;
-    var direction = diff;
-    if (diff > totalSlides / 2) direction = diff - totalSlides;
-    if (diff < -totalSlides / 2) direction = diff + totalSlides;
-    var effectiveDirection = direction > 0 ? 1 : -1;
-
-    var oldIndex = carouselIndex;
     carouselIndex = index;
-    animateCarouselTransition(oldIndex, index, effectiveDirection);
+    updateCarousel();
   }
 
   function startCarouselTimer() {

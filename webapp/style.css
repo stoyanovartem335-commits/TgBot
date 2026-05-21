@@ -292,36 +292,26 @@ img, video, canvas, svg {
 
 .carousel {
   position: relative;
-  height: 310px;
-  padding: 10px 0 40px;
+  height: 260px;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
 }
 
 .carousel__track {
-  position: relative;
+  display: flex;
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  transition: transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .carousel__item {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 160px;
-  height: 118px;
-  margin-left: -80px;
-  margin-top: -59px;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-card);
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  position: relative;
   cursor: pointer;
-  transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   user-select: none !important;
   -webkit-user-drag: none !important;
 }
@@ -337,7 +327,7 @@ img, video, canvas, svg {
 
 .carousel__dots {
   position: absolute;
-  bottom: 0;
+  bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
