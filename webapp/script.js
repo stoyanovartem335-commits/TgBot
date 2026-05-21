@@ -63,10 +63,11 @@
   function returnToBotChat() {
     if (tg && typeof tg.close === 'function') {
       try { tg.close(); } catch (e) {}
-      return;
     }
-    var url = botChatUrl();
-    window.location.href = url;
+    setTimeout(function () {
+      var url = botChatUrl();
+      try { window.location.href = url; } catch (e) {}
+    }, 300);
   }
 
   function sendSelectionFallback(plan) {
@@ -76,7 +77,7 @@
         tg.sendData(payload);
       } catch (err) {}
     }
-    setTimeout(returnToBotChat, 200);
+    setTimeout(returnToBotChat, 150);
   }
 
   function renderPlans(plans) {
@@ -189,6 +190,15 @@
       if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
       document.body.style.pointerEvents = 'none';
 
+      var closed = false;
+      var timeoutId = setTimeout(function () {
+        if (!closed) {
+          closed = true;
+          document.body.style.pointerEvents = '';
+          returnToBotChat();
+        }
+      }, 1500);
+
       fetch('/api/select-plan', {
         method: 'POST',
         headers: {
@@ -201,22 +211,25 @@
         })
       })
       .then(function (res) {
-        document.body.style.pointerEvents = '';
-        if (res.ok) {
-          returnToBotChat();
-        } else {
-          sendSelectionFallback(plan);
+        if (!closed) {
+          closed = true;
+          clearTimeout(timeoutId);
+          document.body.style.pointerEvents = '';
+          if (res.ok) {
+            returnToBotChat();
+          } else {
+            sendSelectionFallback(plan);
+          }
         }
       })
       .catch(function () {
-        document.body.style.pointerEvents = '';
-        sendSelectionFallback(plan);
+        if (!closed) {
+          closed = true;
+          clearTimeout(timeoutId);
+          document.body.style.pointerEvents = '';
+          sendSelectionFallback(plan);
+        }
       });
-
-      setTimeout(function () {
-        document.body.style.pointerEvents = '';
-        returnToBotChat();
-      }, 2000);
     } else {
       var startParam = 'buy_' + plan.code;
       var botUrl = 'https://t.me/' + (botUsername || 'TestKeyBot_bot') + '?start=' + startParam;

@@ -601,34 +601,19 @@ img, video, canvas, svg {
 .plan-card {
   position: relative;
   display: block;
-  background: transparent;
-  border: none;
-  padding: 2px;
+  background: rgba(10, 10, 10, 0.95);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: var(--transition);
-  overflow: visible;
+  overflow: hidden;
   z-index: 1;
 }
 
-.plan-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-xl);
-  opacity: 0.35;
-  background: linear-gradient(135deg, var(--green-primary), var(--green-secondary), var(--green-primary), var(--green-secondary));
-  background-size: 300% 300%;
-  animation: gradientShift 3s ease infinite;
-  transition: opacity 0.3s ease;
-  z-index: 0;
-}
-
-.plan-card:hover::before {
-  opacity: 1;
-}
-
 .plan-card:hover {
-  box-shadow: 0 12px 40px rgba(0, 255, 136, 0.15);
+  border-color: var(--border-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0, 255, 136, 0.05);
 }
 
 .plan-card:active {
@@ -641,15 +626,51 @@ img, video, canvas, svg {
   justify-content: space-between;
   width: 100%;
   padding: 22px 24px;
-  background: rgba(10, 10, 10, 0.95);
+  background: transparent;
   position: relative;
   z-index: 2;
   overflow: hidden;
   transition: var(--transition);
-  border-radius: calc(var(--radius-xl) - 2px);
 }
 
 .plan-card__inner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.02), transparent);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.plan-card--highlighted {
+  background: transparent;
+  border: none;
+  padding: 2px;
+  overflow: visible;
+}
+
+.plan-card--highlighted::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-xl);
+  opacity: 0.35;
+  background: linear-gradient(135deg, var(--green-primary), var(--green-secondary), var(--green-primary), var(--green-secondary));
+  background-size: 300% 300%;
+  animation: gradientShift 3s ease infinite;
+  transition: opacity 0.3s ease;
+  z-index: 0;
+}
+
+.plan-card--highlighted:hover::before {
+  opacity: 1;
+}
+
+.plan-card--highlighted:hover {
+  box-shadow: 0 12px 40px rgba(0, 255, 136, 0.15);
+}
+
+.plan-card--highlighted .plan-card__inner::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -666,10 +687,6 @@ img, video, canvas, svg {
   pointer-events: none;
   border-radius: inherit;
   z-index: 1;
-}
-
-.plan-card--highlighted .plan-card__inner {
-  padding-top: 38px;
 }
 
 @keyframes shimmer {
@@ -697,6 +714,16 @@ img, video, canvas, svg {
   background: rgba(0, 255, 136, 0.12);
   border: 1px solid rgba(0, 255, 136, 0.3);
   z-index: 3;
+}
+
+.plan-card--highlighted .plan-card__inner {
+  background: rgba(10, 10, 10, 0.95);
+  border-radius: calc(var(--radius-xl) - 2px);
+  padding-top: 38px;
+}
+
+.plan-card--highlighted:hover .plan-card__inner {
+  background: rgba(5, 5, 5, 0.97);
 }
 
 .plan-card__info {
