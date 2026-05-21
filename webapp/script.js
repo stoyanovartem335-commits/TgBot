@@ -367,9 +367,10 @@
   }
 
   function getItemStyles(offset) {
+    var absOffset = Math.abs(offset);
     if (offset === 0) {
       return { scale: 1, opacity: 1, w: 320, h: 260, zIndex: 10, mt: -130 };
-    } else if (Math.abs(offset) === 1) {
+    } else if (absOffset === 1) {
       return { scale: 0.9, opacity: 0.55, w: 180, h: 150, zIndex: 5, mt: -75 };
     } else {
       return { scale: 0.82, opacity: 0.35, w: 160, h: 136, zIndex: 1, mt: -68 };
@@ -392,46 +393,33 @@
   }
 
   function nextCarousel() {
+    var oldIndex = carouselIndex;
     carouselIndex = (carouselIndex + 1) % totalSlides;
-    updateCarousel();
+    animateCarouselTransition(oldIndex, carouselIndex, 1);
   }
 
   function prevCarousel() {
+    var oldIndex = carouselIndex;
     carouselIndex = (carouselIndex - 1 + totalSlides) % totalSlides;
-    updateCarousel();
+    animateCarouselTransition(oldIndex, carouselIndex, -1);
   }
 
-  function setCarousel(index) {
-    if (index === carouselIndex) return;
+  function animateCarouselTransition(fromIndex, toIndex, direction) {
     var items = document.querySelectorAll('.carousel__item');
-    var direction = index > carouselIndex ? 1 : -1;
-    var wrapDistance = totalSlides - Math.abs(index - carouselIndex);
-    var useWrap = wrapDistance < Math.abs(index - carouselIndex);
-    var effectiveDirection = useWrap ? -direction : direction;
 
     items.forEach(function (item, i) {
-      var currentOffset = i - carouselIndex;
+      var currentOffset = i - fromIndex;
       if (currentOffset > totalSlides / 2) currentOffset -= totalSlides;
       if (currentOffset < -totalSlides / 2) currentOffset += totalSlides;
 
-      var nextOffset = i - index;
+      var nextOffset = i - toIndex;
       if (nextOffset > totalSlides / 2) nextOffset -= totalSlides;
       if (nextOffset < -totalSlides / 2) nextOffset += totalSlides;
 
-      var currentTranslateX = getTranslateX(currentOffset);
-      var nextTranslateX = getTranslateX(nextOffset);
-      var currentStyles = getItemStyles(currentOffset);
-      var nextStyles = getItemStyles(nextOffset);
+      var crossesBoundary = Math.abs(nextOffset - currentOffset) > totalSlides / 2;
 
-      var shouldTeleport = false;
-      if (effectiveDirection > 0) {
-        shouldTeleport = currentOffset < -1 && nextOffset > 1;
-      } else {
-        shouldTeleport = currentOffset > 1 && nextOffset < -1;
-      }
-
-      if (shouldTeleport) {
-        var teleportOffset = effectiveDirection > 0 ? nextOffset - totalSlides : nextOffset + totalSlides;
+      if (crossesBoundary) {
+        var teleportOffset = direction > 0 ? currentOffset - totalSlides : currentOffset + totalSlides;
         var teleportStyles = getItemStyles(teleportOffset);
         var teleportTranslateX = getTranslateX(teleportOffset);
         item.style.transition = 'none';
@@ -443,18 +431,35 @@
         item.style.marginLeft = (-(teleportStyles.w / 2)) + 'px';
         item.style.marginTop = teleportStyles.mt + 'px';
         void item.offsetHeight;
-        item.style.transition = '';
       }
-
-      applyItemStyle(item, nextOffset, false);
     });
 
-    carouselIndex = index;
+    requestAnimationFrame(function () {
+      items.forEach(function (item, i) {
+        var offset = i - toIndex;
+        if (offset > totalSlides / 2) offset -= totalSlides;
+        if (offset < -totalSlides / 2) offset += totalSlides;
+        applyItemStyle(item, offset, false);
+      });
+    });
 
     var dots = document.querySelectorAll('.carousel__dot');
     dots.forEach(function (dot, i) {
-      dot.classList.toggle('active', i === carouselIndex);
+      dot.classList.toggle('active', i === toIndex);
     });
+  }
+
+  function setCarousel(index) {
+    if (index === carouselIndex) return;
+    var diff = index - carouselIndex;
+    var direction = diff;
+    if (diff > totalSlides / 2) direction = diff - totalSlides;
+    if (diff < -totalSlides / 2) direction = diff + totalSlides;
+    var effectiveDirection = direction > 0 ? 1 : -1;
+
+    var oldIndex = carouselIndex;
+    carouselIndex = index;
+    animateCarouselTransition(oldIndex, index, effectiveDirection);
   }
 
   function startCarouselTimer() {
