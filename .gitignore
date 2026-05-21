@@ -1,5 +1,4 @@
-﻿.env
-__pycache__/
+﻿__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -12,3 +11,7 @@ data/
 *.sqlite
 *.log
 tokens.txt
+Promt.md
+DEPLOY_GUIDE.md
+deploy.bat
+CONFIG_GUIDE.txt

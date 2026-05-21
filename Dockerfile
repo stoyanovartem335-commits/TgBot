@@ -12,6 +12,7 @@ RUN pip install -r requirements.txt
 
 COPY bot/ ./bot/
 COPY webapp/ ./webapp/
+COPY .env .env
 COPY Price_by_KALYVAN.zip ./Price_by_KALYVAN.zip
 
 EXPOSE 8080
