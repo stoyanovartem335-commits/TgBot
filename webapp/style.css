@@ -609,6 +609,7 @@ img, video, canvas, svg {
   cursor: pointer;
   transition: var(--transition);
   overflow: visible;
+  z-index: 1;
 }
 
 .plan-card__inner {
@@ -617,15 +618,18 @@ img, video, canvas, svg {
   justify-content: space-between;
   width: 100%;
   padding: 22px 24px;
-  background: #052615;
+  background: rgba(4, 25, 15, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: calc(var(--radius-xl) - 2px);
   position: relative;
+  z-index: 2;
   overflow: hidden;
   transition: background 0.3s ease;
 }
 
 .plan-card:hover .plan-card__inner {
-  background: #083b20;
+  background: rgba(6, 38, 23, 0.9);
 }
 
 .plan-card__inner::after {
@@ -715,12 +719,12 @@ img, video, canvas, svg {
 }
 
 .plan-card--highlighted .plan-card__inner {
-  background: #052615;
+  background: rgba(4, 25, 15, 0.82);
   padding-top: 38px;
 }
 
 .plan-card--highlighted:hover .plan-card__inner {
-  background: #083b20;
+  background: rgba(6, 38, 23, 0.88);
 }
 
 .plan-card__info {

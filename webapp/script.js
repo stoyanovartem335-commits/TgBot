@@ -75,10 +75,10 @@
       try {
         tg.sendData(payload);
         setTimeout(returnToBotChat, 120);
-      } catch (err) {
-        returnToBotChat();
-      }
+        return;
+      } catch (err) {}
     }
+    returnToBotChat();
   }
 
   function renderPlans(plans) {
