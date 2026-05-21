@@ -42,8 +42,10 @@ async def plans_json_handler(request: web.Request) -> web.Response:
 
 
 async def site_json_handler(request: web.Request) -> web.Response:
-    from .config import site_config_for_webapp
-    return web.json_response(site_config_for_webapp())
+    from .config import site_config_for_webapp, BOT_USERNAME
+    data = site_config_for_webapp()
+    data["bot_username"] = BOT_USERNAME
+    return web.json_response(data)
 
 
 async def triboote_success_handler(request: web.Request) -> web.Response:

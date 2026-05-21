@@ -2,9 +2,11 @@
   'use strict';
 
   var tg = window.Telegram && window.Telegram.WebApp;
+  var isWebApp = tg && tg.initDataUnsafe && tg.initDataUnsafe.query_id;
+
   if (tg) {
     tg.ready();
-    tg.expand();
+    if (isWebApp) tg.expand();
   }
 
   var plansEl = document.getElementById('plansGrid');
@@ -46,6 +48,8 @@
   }
 
   /* ===== Plans ===== */
+  var botUsername = '';
+
   function renderPlans(plans) {
     if (!plansEl) return;
     plansEl.innerHTML = '';
@@ -105,11 +109,14 @@
   }
 
   function selectPlan(plan) {
-    var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub });
-    if (tg && typeof tg.sendData === 'function') {
+    if (isWebApp && tg && typeof tg.sendData === 'function') {
+      var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub });
       tg.sendData(payload);
     } else {
-      alert('\u0412\u044b\u0431\u0440\u0430\u043d: ' + plan.label + ' (' + plan.price_rub + ' \u20BD)');
+      /* Not in WebApp — redirect to Telegram bot with /start payload */
+      var startParam = 'buy_' + plan.code;
+      var botUrl = 'https://t.me/' + (botUsername || 'TestKeyBot_bot') + '?start=' + startParam;
+      window.location.href = botUrl;
     }
   }
 
@@ -136,6 +143,27 @@
         plansEl.innerHTML = '<p style="color:#c00;text-align:center;padding:20px">\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0442\u0430\u0440\u0438\u0444\u044b: ' + (err && err.message ? err.message : err) + '</p>';
       }
     });
+
+  /* ===== Fetch site config (bot username, channel URL) ===== */
+  fetch('/api/site', { headers: { 'ngrok-skip-browser-warning': 'true' } })
+    .then(function (r) { return r.json(); })
+    .then(function (cfg) {
+      botUsername = cfg.bot_username || '';
+      if (cfg.tg_channel_url) {
+        var chLink = document.getElementById('channelLink');
+        if (chLink) chLink.href = cfg.tg_channel_url;
+      }
+      if (botUsername) {
+        var botLink = document.getElementById('botLink');
+        if (botLink) botLink.href = 'https://t.me/' + botUsername;
+      }
+      /* Show footer only outside WebApp */
+      if (!isWebApp) {
+        var footer = document.getElementById('browserFooter');
+        if (footer) footer.style.display = 'block';
+      }
+    })
+    .catch(function () { /* silent fail */ });
 
   /* ===== URL hash: scroll to pricing ===== */
   if (window.location.hash === '#pricing') {
@@ -321,51 +349,86 @@
     carouselEl.addEventListener('mouseleave', function () { isCarouselPaused = false; });
   }
 
-  /* ===== Carousel Swipe/Drag ===== */
+  /* ===== Carousel Swipe/Drag (fixed — no endless scroll) ===== */
   (function () {
     var track = document.getElementById('carouselTrack');
     if (!track) return;
 
-    var startX = 0, currentX = 0, isDragging = false;
+    var startX = 0, dragDelta = 0, isDragging = false;
 
     function onStart(e) {
+      if (e.button && e.button !== 0) return; /* only left click */
       isDragging = true;
+      dragDelta = 0;
       startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
-      track.style.transition = 'none';
+      var items = document.querySelectorAll('.carousel__item');
+      items.forEach(function (item) {
+        item.style.transition = 'none';
+      });
     }
 
     function onMove(e) {
       if (!isDragging) return;
       e.preventDefault();
-      currentX = (e.type === 'touchmove' ? e.touches[0].clientX : e.clientX) - startX;
+      var clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+      dragDelta = clientX - startX;
+
+      /* Clamp drag to reasonable range (one slide max) */
+      var maxDrag = 200;
+      if (dragDelta > maxDrag) dragDelta = maxDrag;
+      if (dragDelta < -maxDrag) dragDelta = -maxDrag;
+
       var items = document.querySelectorAll('.carousel__item');
-      items.forEach(function (item) {
-        var currentTransform = item.style.transform || '';
-        var baseMatch = currentTransform.match(/translateX\(([^)]+)px\)/);
-        var baseX = baseMatch ? parseFloat(baseMatch[1]) : 0;
-        item.style.transform = currentTransform.replace(/translateX\([^)]+px\)/, 'translateX(' + (baseX + currentX * 0.3) + 'px)');
+      items.forEach(function (item, i) {
+        var offset = i - carouselIndex;
+        if (offset > totalSlides / 2) offset -= totalSlides;
+        if (offset < -totalSlides / 2) offset += totalSlides;
+
+        var baseX = getTranslateX(offset);
+        var styles = getItemStyles(offset);
+        /* Only shift the center and adjacent items visually */
+        var shift = (offset === 0 || Math.abs(offset) === 1) ? dragDelta * 0.5 : dragDelta * 0.2;
+        item.style.transform = 'translateX(' + (baseX + shift) + 'px) scale(' + styles.scale + ')';
+        item.style.opacity = styles.opacity;
+        item.style.width = styles.w + 'px';
+        item.style.height = styles.h + 'px';
+        item.style.zIndex = styles.zIndex;
+        item.style.marginLeft = (-(styles.w / 2)) + 'px';
+        item.style.marginTop = (-(styles.h / 2)) + 'px';
       });
     }
 
     function onEnd() {
       if (!isDragging) return;
       isDragging = false;
-      track.style.transition = '';
-      if (Math.abs(currentX) > 50) {
-        if (currentX < 0) { nextCarousel(); resetCarouselTimer(); }
-        else { carouselIndex = (carouselIndex - 1 + totalSlides) % totalSlides; updateCarousel(); resetCarouselTimer(); }
+
+      /* Restore transitions */
+      var items = document.querySelectorAll('.carousel__item');
+      items.forEach(function (item) {
+        item.style.transition = '';
+      });
+
+      if (Math.abs(dragDelta) > 60) {
+        if (dragDelta < 0) {
+          nextCarousel();
+        } else {
+          carouselIndex = (carouselIndex - 1 + totalSlides) % totalSlides;
+          updateCarousel();
+        }
+        resetCarouselTimer();
       } else {
+        /* Snap back to current position */
         updateCarousel();
       }
-      currentX = 0;
+      dragDelta = 0;
     }
 
     track.addEventListener('touchstart', onStart, { passive: true });
     track.addEventListener('touchmove', onMove, { passive: false });
     track.addEventListener('touchend', onEnd);
     track.addEventListener('mousedown', onStart);
-    track.addEventListener('mousemove', onMove);
-    track.addEventListener('mouseup', onEnd);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
     track.addEventListener('mouseleave', function () { if (isDragging) onEnd(); });
   })();
 

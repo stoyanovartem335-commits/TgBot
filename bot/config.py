@@ -42,6 +42,7 @@ class Plan:
 BOT_TOKEN: str = _req("BOT_TOKEN")
 ADMIN_ID: int = _int("ADMIN_ID")
 SUPPORT_USERNAME: str = (os.getenv("SUPPORT_USERNAME") or "").lstrip("@")
+BOT_USERNAME: str = os.getenv("BOT_USERNAME", "TestKeyBot_bot")
 
 MONGO_URI: str = _req("MONGO_URI")
 

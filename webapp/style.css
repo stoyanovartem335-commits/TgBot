@@ -741,3 +741,24 @@ body {
 @media (max-width: 400px) {
   .hero__title { font-size: 38px; }
 }
+
+/* ===== Browser-only footer ===== */
+.browser-footer {
+  text-align: center;
+  padding: 16px 0 24px;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 16px;
+}
+.browser-footer p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 4px 0;
+}
+.browser-footer a {
+  color: var(--green-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+.browser-footer a:hover {
+  text-decoration: underline;
+}
