@@ -601,19 +601,20 @@ img, video, canvas, svg {
 .plan-card {
   position: relative;
   display: block;
-  background: rgba(10, 10, 10, 0.95);
-  border: 1px solid var(--border-subtle);
+  background: rgba(5, 25, 15, 0.85); /* Тёмно-зелёный фон */
+  border: 1px solid rgba(0, 255, 136, 0.15); /* Зеленоватая рамка */
   border-radius: var(--radius-xl);
   cursor: pointer;
-  transition: var(--transition);
+  transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease; /* Плавная анимация рамки и фона */
   overflow: hidden;
   z-index: 1;
 }
 
 .plan-card:hover {
-  border-color: var(--border-accent);
+  border-color: rgba(0, 255, 136, 0.4);
+  background: rgba(10, 35, 20, 0.95);
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(0, 255, 136, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 255, 136, 0.15);
 }
 
 .plan-card:active {
