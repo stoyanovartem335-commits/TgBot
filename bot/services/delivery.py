@@ -1,4 +1,3 @@
-"""Final delivery: tokens + ZIP archive + message to user."""
 from __future__ import annotations
 
 import logging
@@ -10,6 +9,7 @@ from aiogram.types import FSInputFile
 from ..config import ADMIN_ID, TG_CHANNEL_URL, ZIP_FILE_PATH
 from ..database import insert_purchase
 from ..keyboards import post_purchase_kb
+from .settings_service import get_promotion_status
 from .token_service import TokenGenerationError, issue_tokens
 
 log = logging.getLogger(__name__)
@@ -31,11 +31,12 @@ async def deliver_purchase(
     days: int | None,
     payment_method: str,
 ) -> str:
-    """Generate tokens, record purchase, send token + ZIP to user. Returns main token."""
     method_label = PAYMENT_METHOD_LABEL.get(payment_method, payment_method)
 
+    promo_enabled, _ = await get_promotion_status()
+
     try:
-        tokens = await issue_tokens(plan_code, days, count=2)
+        tokens = await issue_tokens(plan_code, days, count=2 if promo_enabled else 1)
     except TokenGenerationError as exc:
         log.error("Token generation failed for user %s: %s", user_id, exc)
         await bot.send_message(
@@ -51,7 +52,8 @@ async def deliver_purchase(
             pass
         raise
 
-    token, friend_token = tokens[0], tokens[1]
+    token = tokens[0]
+    friend_token = tokens[1] if promo_enabled and len(tokens) > 1 else None
 
     from datetime import datetime, timedelta, timezone
     paid_at = datetime.now(timezone.utc)
@@ -80,10 +82,13 @@ async def deliver_purchase(
         f"{expiry_line}\n\n"
         "\U0001f511 <b>\u0412\u0430\u0448 \u0442\u043e\u043a\u0435\u043d:</b>\n"
         f"<code>{token}</code>\n\n"
-        "\U0001f381 <b>\u0422\u043e\u043a\u0435\u043d \u00ab\u0434\u043b\u044f \u0434\u0440\u0443\u0433\u0430\u00bb</b> (\u0442\u043e\u0442 \u0436\u0435 \u0441\u0440\u043e\u043a):\n"
-        f"<code>{friend_token}</code>\n\n"
-        f"\U0001f4d6 \u0412\u0441\u0435 \u0438\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438 \u2014 \u0432 \u043a\u0430\u043d\u0430\u043b\u0435:\n{TG_CHANNEL_URL}"
     )
+    if friend_token:
+        text += (
+            "\U0001f381 <b>\u0422\u043e\u043a\u0435\u043d \u00ab\u0434\u043b\u044f \u0434\u0440\u0443\u0433\u0430\u00bb</b> (\u0442\u043e\u0442 \u0436\u0435 \u0441\u0440\u043e\u043a):\n"
+            f"<code>{friend_token}</code>\n\n"
+        )
+    text += f"\U0001f4d6 \u0412\u0441\u0435 \u0438\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438 \u2014 \u0432 \u043a\u0430\u043d\u0430\u043b\u0435:\n{TG_CHANNEL_URL}"
 
     await bot.send_message(
         user_id,
@@ -92,7 +97,6 @@ async def deliver_purchase(
         disable_web_page_preview=True,
     )
 
-    # Send ZIP archive
     zip_path = Path(ZIP_FILE_PATH)
     if zip_path.exists():
         try:

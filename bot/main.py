@@ -1,4 +1,3 @@
-"""Bot entrypoint: starts aiogram dispatcher + aiohttp web server."""
 from __future__ import annotations
 
 import asyncio
@@ -10,8 +9,9 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from .config import BOT_TOKEN
-from .database import init_db
+from .database import close_db, init_db
 from .handlers import admin, gsheets, menu, requisites, stars, start, triboote, webapp
+from .services import api_client, triboote_api
 from .webhook_server import start_web_server
 
 
@@ -48,6 +48,9 @@ async def main() -> None:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         await runner.cleanup()
+        await api_client.close_session()
+        await triboote_api.close_session()
+        await close_db()
         await bot.session.close()
 
 

@@ -1,4 +1,3 @@
-"""Manual bank-transfer flow."""
 from __future__ import annotations
 
 import logging
@@ -10,6 +9,7 @@ from aiogram.types import CallbackQuery
 from ..config import ADMIN_ID, REQUISITES_CARD, REQUISITES_NAME, REQUISITES_TEXT
 from ..database import create_pending, get_pending, get_settings
 from ..keyboards import admin_review_kb, i_paid_kb
+from ..services.settings_service import price_with_active_discount
 
 log = logging.getLogger(__name__)
 router = Router(name="requisites")
@@ -25,7 +25,7 @@ async def on_pay_requisites(call: CallbackQuery) -> None:
     prices_rub = settings.get("prices_rub", {})
     plan_labels = {"1m": "1 \u043c\u0435\u0441\u044f\u0446", "2m": "2 \u043c\u0435\u0441\u044f\u0446\u0430", "3m": "3 \u043c\u0435\u0441\u044f\u0446\u0430", "6m": "6 \u043c\u0435\u0441\u044f\u0446\u0435\u0432", "forever": "Forever"}
 
-    amount = prices_rub.get(plan_code, 0)
+    amount = await price_with_active_discount(prices_rub.get(plan_code, 0))
     label = plan_labels.get(plan_code, plan_code)
 
     if amount <= 0:
@@ -72,7 +72,7 @@ async def on_user_paid(call: CallbackQuery) -> None:
     prices_rub = settings.get("prices_rub", {})
     plan_code = pending["plan_code"]
     label = plan_labels.get(plan_code, plan_code)
-    amount = prices_rub.get(plan_code, 0)
+    amount = await price_with_active_discount(prices_rub.get(plan_code, 0))
 
     await call.answer("\u0421\u043f\u0430\u0441\u0438\u0431\u043e! \u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0430 \u043d\u0430 \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0443.")
     await call.message.edit_reply_markup(reply_markup=None)

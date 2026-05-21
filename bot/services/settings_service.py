@@ -1,11 +1,9 @@
-"""MongoDB settings service - prices, discounts, tariffs."""
 from __future__ import annotations
 
 from ..database import get_settings, update_settings
 
 
 async def get_plans_from_settings() -> list[dict]:
-    """Get current plans from MongoDB settings."""
     settings = await get_settings()
     prices_rub = settings.get("prices_rub", {})
     prices_stars = settings.get("prices_stars", {})
@@ -35,15 +33,20 @@ async def get_plans_from_settings() -> list[dict]:
 
 
 async def apply_discount(price: int, discount_pct: int) -> int:
-    """Apply discount and round to integer."""
     if discount_pct <= 0:
         return price
     discounted = price * (100 - discount_pct) / 100
     return int(round(discounted))
 
 
+async def price_with_active_discount(price: int) -> int:
+    enabled, pct = await get_active_discount()
+    if enabled and pct > 0:
+        return await apply_discount(price, pct)
+    return price
+
+
 async def get_active_discount() -> tuple[bool, int]:
-    """Returns (enabled, percentage)."""
     settings = await get_settings()
     discounts = settings.get("discounts", {})
     return discounts.get("enabled", False), discounts.get("percentage", 0)

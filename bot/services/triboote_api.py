@@ -1,4 +1,3 @@
-"""Triboote payment API client."""
 from __future__ import annotations
 
 import logging
@@ -19,6 +18,23 @@ class TribootePayment:
 
 class TribooteError(RuntimeError):
     pass
+
+
+_session: aiohttp.ClientSession | None = None
+
+
+async def get_session() -> aiohttp.ClientSession:
+    global _session
+    if _session is None or _session.closed:
+        _session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15))
+    return _session
+
+
+async def close_session() -> None:
+    global _session
+    if _session is not None and not _session.closed:
+        await _session.close()
+    _session = None
 
 
 async def create_payment(
@@ -46,21 +62,20 @@ async def create_payment(
         "Accept": "application/json",
     }
 
-    timeout = aiohttp.ClientTimeout(total=15)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(
-            f"{TRIBOOTE_API_URL}/payments",
-            json=payload,
-            headers=headers,
-        ) as resp:
-            text = await resp.text()
-            if resp.status >= 400:
-                log.error("Triboote error: %s %s", resp.status, text)
-                raise TribooteError(f"Triboote \u0432\u0435\u0440\u043d\u0443\u043b {resp.status}: {text[:200]}")
-            try:
-                data = await resp.json(content_type=None)
-            except Exception as exc:
-                raise TribooteError(f"\u041d\u0435\u0432\u0430\u043b\u0438\u0434\u043d\u044b\u0439 \u043e\u0442\u0432\u0435\u0442 Triboote: {exc}") from exc
+    session = await get_session()
+    async with session.post(
+        f"{TRIBOOTE_API_URL}/payments",
+        json=payload,
+        headers=headers,
+    ) as resp:
+        text = await resp.text()
+        if resp.status >= 400:
+            log.error("Triboote error: %s %s", resp.status, text)
+            raise TribooteError(f"Triboote \u0432\u0435\u0440\u043d\u0443\u043b {resp.status}: {text[:200]}")
+        try:
+            data = await resp.json(content_type=None)
+        except Exception as exc:
+            raise TribooteError(f"\u041d\u0435\u0432\u0430\u043b\u0438\u0434\u043d\u044b\u0439 \u043e\u0442\u0432\u0435\u0442 Triboote: {exc}") from exc
 
     pay_url = data.get("pay_url") or data.get("payment_url") or data.get("url")
     ext_id = data.get("id") or data.get("payment_id") or payment_id

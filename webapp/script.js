@@ -14,18 +14,16 @@
   var scrollBtn = document.getElementById('heroScrollBtn');
   var progressBar = document.getElementById('progressBar');
 
-  /* ===== Scroll Progress ===== */
   function updateProgress() {
     var scrollTop = window.scrollY || document.documentElement.scrollTop;
     var docHeight = document.documentElement.scrollHeight - window.innerHeight;
     var progress = docHeight > 0 ? scrollTop / docHeight : 0;
     if (progressBar) progressBar.style.transform = 'scaleX(' + progress + ')';
-    requestAnimationFrame(updateProgress);
   }
   window.addEventListener('scroll', function () { requestAnimationFrame(updateProgress); }, { passive: true });
-  requestAnimationFrame(updateProgress);
+  window.addEventListener('resize', function () { requestAnimationFrame(updateProgress); }, { passive: true });
+  updateProgress();
 
-  /* ===== Scroll Animations ===== */
   var observer = new IntersectionObserver(function (entries) {
     entries.forEach(function (entry) {
       if (entry.isIntersecting) {
@@ -38,7 +36,6 @@
     observer.observe(el);
   });
 
-  /* ===== Hero Buttons ===== */
   if (scrollBtn) {
     scrollBtn.addEventListener('click', function () {
       var features = document.getElementById('features');
@@ -47,11 +44,51 @@
     });
   }
 
-  /* ===== Plans ===== */
   var botUsername = '';
 
   var discountEnabled = false;
   var discountPct = 0;
+
+  function togglePromoAdvantages(enabled) {
+    document.querySelectorAll('[data-promo-only]').forEach(function (el) {
+      el.hidden = !enabled;
+      if (enabled) observer.observe(el);
+    });
+  }
+
+  function botChatUrl() {
+    return 'https://t.me/' + (botUsername || 'TestKeyBot_bot');
+  }
+
+  function returnToBotChat() {
+    var url = botChatUrl();
+    if (tg && typeof tg.openTelegramLink === 'function') {
+      try {
+        tg.openTelegramLink(url);
+        setTimeout(function () {
+          if (typeof tg.close === 'function') tg.close();
+        }, 120);
+        return;
+      } catch (err) {}
+    }
+    if (tg && typeof tg.close === 'function') {
+      tg.close();
+      return;
+    }
+    window.location.href = url;
+  }
+
+  function sendSelectionFallback(plan) {
+    var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub, price_stars: plan.price_stars });
+    if (tg && typeof tg.sendData === 'function') {
+      try {
+        tg.sendData(payload);
+        setTimeout(returnToBotChat, 120);
+      } catch (err) {
+        returnToBotChat();
+      }
+    }
+  }
 
   function renderPlans(plans) {
     if (!plansEl) return;
@@ -97,7 +134,6 @@
       var priceWrap = document.createElement('div');
       priceWrap.className = 'plan-card__price-wrap';
 
-      // 1. Ruble price block
       var rubBlock = document.createElement('div');
       rubBlock.className = 'plan-card__price-block';
 
@@ -120,7 +156,6 @@
       }
       priceWrap.appendChild(rubBlock);
 
-      // 2. Stars price block
       var starsBlock = document.createElement('div');
       starsBlock.className = 'plan-card__price-block';
 
@@ -178,28 +213,22 @@
       .then(function (res) {
         document.body.style.pointerEvents = '';
         if (res.ok) {
-          tg.close();
+          returnToBotChat();
         } else {
-          // Fallback to sendData
-          var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub });
-          tg.sendData(payload);
+          sendSelectionFallback(plan);
         }
       })
       .catch(function () {
         document.body.style.pointerEvents = '';
-        // Fallback to sendData
-        var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub });
-        tg.sendData(payload);
+        sendSelectionFallback(plan);
       });
     } else {
-      /* Not in WebApp — redirect to Telegram bot with /start payload */
       var startParam = 'buy_' + plan.code;
       var botUrl = 'https://t.me/' + (botUsername || 'TestKeyBot_bot') + '?start=' + startParam;
       window.location.href = botUrl;
     }
   }
 
-  /* ===== Hero Buy Button ===== */
   if (buyBtn) {
     buyBtn.addEventListener('click', function () {
       var pricing = document.getElementById('pricing');
@@ -210,7 +239,6 @@
     });
   }
 
-  /* ===== Fetch Plans ===== */
   fetch('/api/plans', { headers: { 'ngrok-skip-browser-warning': 'true' } })
     .then(function (r) {
       if (!r.ok) throw new Error('plans fetch failed: ' + r.status);
@@ -229,7 +257,6 @@
       }
     });
 
-  /* ===== Fetch site config (bot username, channel URL) ===== */
   fetch('/api/site', { headers: { 'ngrok-skip-browser-warning': 'true' } })
     .then(function (r) { return r.json(); })
     .then(function (cfg) {
@@ -240,17 +267,19 @@
       }
       if (botUsername) {
         var botLink = document.getElementById('botLink');
-        if (botLink) botLink.href = 'https://t.me/' + botUsername;
+        if (botLink) {
+          botLink.href = 'https://t.me/' + botUsername;
+          botLink.textContent = '@' + botUsername;
+        }
       }
-      /* Show footer only outside WebApp */
+      togglePromoAdvantages(!!cfg.promo_enabled);
       if (!isWebApp) {
         var footer = document.getElementById('browserFooter');
         if (footer) footer.style.display = 'block';
       }
     })
-    .catch(function () { /* silent fail */ });
+    .catch(function () { togglePromoAdvantages(false); });
 
-  /* ===== URL hash: scroll to pricing ===== */
   if (window.location.hash === '#pricing') {
     setTimeout(function () {
       var pricing = document.getElementById('pricing');
@@ -258,7 +287,6 @@
     }, 300);
   }
 
-  /* ===== Carousel ===== */
   var SCREENSHOT_IMAGES = [
     '/static/images/photo_2026-05-17_21-31-23.jpg',
     '/static/images/photo_2026-05-17_21-31-23 (2).jpg',
@@ -430,7 +458,6 @@
     carouselEl.addEventListener('mouseleave', function () { isCarouselPaused = false; });
   }
 
-  /* ===== Carousel Arrow Buttons ===== */
   var carouselPrevBtn = document.getElementById('carouselPrev');
   var carouselNextBtn = document.getElementById('carouselNext');
   if (carouselPrevBtn) {
@@ -446,7 +473,6 @@
     });
   }
 
-  /* ===== Lightbox ===== */
   var lightbox = document.getElementById('lightbox');
   var lightboxImage = document.getElementById('lightboxImage');
   var lightboxCounter = document.getElementById('lightboxCounter');
@@ -516,7 +542,6 @@
     });
   });
 
-  /* Prevent browser ghost dragging on the carousel track */
   var carouselTrack = document.getElementById('carouselTrack');
   if (carouselTrack) {
     carouselTrack.addEventListener('dragstart', function (e) {

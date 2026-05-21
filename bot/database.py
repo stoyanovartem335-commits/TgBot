@@ -1,6 +1,6 @@
-"""MongoDB persistence layer."""
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -9,6 +9,9 @@ from .config import MONGO_URI
 
 _client: AsyncIOMotorClient | None = None
 _db: AsyncIOMotorDatabase | None = None
+_settings_cache: dict | None = None
+_settings_cache_until: datetime | None = None
+_settings_cache_ttl = timedelta(seconds=5)
 
 
 async def get_db() -> AsyncIOMotorDatabase:
@@ -20,15 +23,21 @@ async def get_db() -> AsyncIOMotorDatabase:
 
 async def init_db() -> None:
     global _client, _db
-    _client = AsyncIOMotorClient(MONGO_URI)
+    _client = AsyncIOMotorClient(
+        MONGO_URI,
+        maxPoolSize=20,
+        minPoolSize=0,
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=5000,
+        socketTimeoutMS=15000,
+        retryWrites=True,
+    )
     _db = _client.get_database()
-    # Ensure indexes
     await _db.bot_purchases.create_index("user_id")
     await _db.bot_purchases.create_index("token", unique=True)
     await _db.bot_pending_payments.create_index("payment_id", unique=True)
     await _db.bot_pending_payments.create_index("user_id")
     await _db.bot_gsheets_requests.create_index("user_id")
-    # Create default settings if not exist
     existing = await _db.bot_settings.find_one({"_id": "global"})
     if not existing:
         await _db.bot_settings.insert_one({
@@ -153,15 +162,24 @@ async def insert_gsheets_request(
 
 
 async def get_settings() -> dict:
+    global _settings_cache, _settings_cache_until
+    now = datetime.now(timezone.utc)
+    if _settings_cache is not None and _settings_cache_until is not None and now < _settings_cache_until:
+        return deepcopy(_settings_cache)
+
     db = await get_db()
     settings = await db.bot_settings.find_one({"_id": "global"})
     if not settings:
         await init_db()
         settings = await db.bot_settings.find_one({"_id": "global"})
-    return settings or {}
+    settings = settings or {}
+    _settings_cache = deepcopy(settings)
+    _settings_cache_until = now + _settings_cache_ttl
+    return deepcopy(settings)
 
 
 async def update_settings(updates: dict) -> dict:
+    global _settings_cache, _settings_cache_until
     db = await get_db()
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.bot_settings.update_one(
@@ -169,7 +187,20 @@ async def update_settings(updates: dict) -> dict:
         {"$set": updates},
         upsert=True,
     )
-    return await get_settings()
+    settings = await db.bot_settings.find_one({"_id": "global"}) or {}
+    _settings_cache = deepcopy(settings)
+    _settings_cache_until = datetime.now(timezone.utc) + _settings_cache_ttl
+    return deepcopy(settings)
+
+
+async def close_db() -> None:
+    global _client, _db, _settings_cache, _settings_cache_until
+    if _client is not None:
+        _client.close()
+    _client = None
+    _db = None
+    _settings_cache = None
+    _settings_cache_until = None
 
 
 async def count_users() -> int:

@@ -1,4 +1,3 @@
-"""/start command with WebApp button."""
 from __future__ import annotations
 
 from aiogram import Router
@@ -14,9 +13,8 @@ WELCOME = (
     "\U0001f44b <b>\u0414\u043e\u0431\u0440\u043e \u043f\u043e\u0436\u0430\u043b\u043e\u0432\u0430\u0442\u044c!</b>\n\n"
     "\u042d\u0442\u043e \u0431\u043e\u0442 \u0434\u043b\u044f \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u044f \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u043a <b>\u0422\u0430\u0431\u043b\u0438\u0446\u0435 \u041a\u0430\u043b\u044b\u0432\u0430\u043d\u0430</b> \u2014 \u0438\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442\u0443 \u0434\u043b\u044f \u043f\u0435\u0440\u0435\u043f\u0440\u043e\u0434\u0430\u0436 \u043d\u0430 Arizona RP.\n\n"
     "\u041c\u0435\u043d\u044e:\n"
-    "\u2022 \U0001f4cb <b>\u041e\u0437\u043d\u0430\u043a\u043e\u043c\u0438\u0442\u044c\u0441\u044f \u0441\u043e \u0441\u043a\u0440\u0438\u043f\u0442\u043e\u043c</b> \u2014 \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u0432\u0438\u0442\u0440\u0438\u043d\u0443\n"
-    "\u2022 \U0001f6d2 <b>\u041f\u0440\u0438\u043e\u0431\u0440\u0435\u0441\u0442\u0438 \u0441\u043a\u0440\u0438\u043f\u0442</b> \u2014 \u0432\u044b\u0431\u0440\u0430\u0442\u044c \u0442\u0430\u0440\u0438\u0444 \u0438 \u043a\u0443\u043f\u0438\u0442\u044c\n"
-    "\u2022 \U0001f4f0 <b>\u041d\u043e\u0432\u043e\u0441\u0442\u0438 \u0420\u044b\u043d\u043a\u0430 Arizona</b> \u2014 \u043d\u0430\u0448 Telegram-\u043a\u0430\u043d\u0430\u043b\n"
+    "\u2022 \U0001f4cb <b>\u041e\u0437\u043d\u0430\u043a\u043e\u043c\u0438\u0442\u044c\u0441\u044f/\u043a\u0443\u043f\u0438\u0442\u044c \u0441\u043a\u0440\u0438\u043f\u0442</b> \u2014 \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u0432\u0438\u0442\u0440\u0438\u043d\u0443 \u0438 \u0432\u044b\u0431\u0440\u0430\u0442\u044c \u0442\u0430\u0440\u0438\u0444\n"
+    "\u2022 \U0001f4f0 <b>\u041d\u043e\u0432\u043e\u0441\u0442\u0438 \u0420\u044b\u043d\u043a\u0430</b> \u2014 \u043d\u0430\u0448 Telegram-\u043a\u0430\u043d\u0430\u043b\n"
     "\u2022 \U0001f4ac <b>\u0422\u0435\u0445 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430</b> \u2014 \u0441\u0432\u044f\u0437\u0430\u0442\u044c\u0441\u044f \u0441 \u0430\u0434\u043c\u0438\u043d\u043e\u043c"
 )
 
@@ -31,14 +29,16 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
         if plan:
             discount_enabled, discount_pct = await get_active_discount()
             price_rub = plan["price_rub"]
+            price_stars = plan["price_stars"]
             if discount_enabled and discount_pct > 0:
                 price_rub = await apply_discount(price_rub, discount_pct)
+                price_stars = await apply_discount(price_stars, discount_pct)
             
             from ..keyboards import payment_methods_kb
             text = (
                 "Вы выбрали:\n\n"
                 f"📦 <b>{plan['label']}</b>\n"
-                f"💵 Цена: <b>{price_rub} ₽</b>\n\n"
+                f"💵 Цена: <b>{price_rub} ₽</b> / <b>{price_stars} ⭐</b>\n\n"
                 "Выберите способ оплаты:"
             )
             await message.answer(text, reply_markup=payment_methods_kb(plan_code))

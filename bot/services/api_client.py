@@ -1,4 +1,3 @@
-"""HTTP client for the API server."""
 from __future__ import annotations
 
 import logging
@@ -24,6 +23,13 @@ async def get_session() -> aiohttp.ClientSession:
     return _session
 
 
+async def close_session() -> None:
+    global _session
+    if _session is not None and not _session.closed:
+        await _session.close()
+    _session = None
+
+
 async def create_subscription_token(
     *,
     key_part2: str,
@@ -32,7 +38,6 @@ async def create_subscription_token(
     subscription_expiration: str | None = None,
     hwid: str | None = None,
 ) -> str:
-    """Create a token on the API server."""
     payload = {
         "admin_token": API_ADMIN_TOKEN,
         "key_part2": key_part2,
@@ -60,7 +65,6 @@ async def create_subscription_token(
 
 
 async def verify_api_connection() -> bool:
-    """Check if API server is reachable."""
     try:
         session = await get_session()
         async with session.get(f"{API_SERVER_URL}/api/health") as resp:

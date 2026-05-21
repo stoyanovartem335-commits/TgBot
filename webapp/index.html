@@ -19,9 +19,9 @@
 
   <main class="container">
     <section class="hero" id="hero">
-      <div class="hero__badge">⚡ Инструмент перепродавца</div>
+      <div class="hero__badge">⚡ Инструмент перекупа</div>
       <h1 class="hero__title">Таблица<br /><span class="text-gradient">Калывана</span></h1>
-      <p class="hero__subtitle">Живой документ с ежедневными товарами и средними ценами для перепродаж на Arizona RP.</p>
+      <p class="hero__subtitle">Таблица в Google Sheets/Lua script для помощи в перепродажах. Инструмент №1 для современного перекупа!</p>
       <div class="hero__actions">
         <button class="btn btn--primary" id="heroBuyBtn">Приобрести</button>
         <button class="btn btn--ghost" id="heroScrollBtn">Узнать больше</button>
@@ -34,26 +34,26 @@
         <div class="feature-card" data-animate>
           <div class="feature-card__glow"></div>
           <div class="feature-card__icon">📊</div>
-          <h3 class="feature-card__title">Ежедневное обновление</h3>
-          <p class="feature-card__desc">Товары и цены обновляются каждый день — всегда свежая аналитика.</p>
+          <h3 class="feature-card__title">Актуальные цены</h3>
+          <p class="feature-card__desc">Средние цены, товары и история сделок помогают быстро понять, где есть маржа.</p>
         </div>
         <div class="feature-card" data-animate>
           <div class="feature-card__glow"></div>
           <div class="feature-card__icon">🏪</div>
-          <h3 class="feature-card__title">Торговая площадка</h3>
-          <p class="feature-card__desc">Удобный просмотр лавок и предложений на всех серверах.</p>
+          <h3 class="feature-card__title">Маркет лавок</h3>
+          <p class="feature-card__desc">Поиск предложений по серверам, лавкам и предметам без лишнего ручного перебора.</p>
         </div>
         <div class="feature-card" data-animate>
           <div class="feature-card__glow"></div>
           <div class="feature-card__icon">🚗</div>
-          <h3 class="feature-card__title">Таблица на авто</h3>
-          <p class="feature-card__desc">Отдельная аналитика по машинам — цены, ликвидность, даты.</p>
+          <h3 class="feature-card__title">Авто и редкие позиции</h3>
+          <p class="feature-card__desc">Отдельные таблицы и подсказки по машинам, аксессуарам и ликвидным позициям.</p>
         </div>
         <div class="feature-card" data-animate>
           <div class="feature-card__glow"></div>
           <div class="feature-card__icon">⚙️</div>
-          <h3 class="feature-card__title">Дополнительные функции</h3>
-          <p class="feature-card__desc">Очередь VC, аналоги аксессуаров, средние цены и другое.</p>
+          <h3 class="feature-card__title">Lua-помощник в игре</h3>
+          <p class="feature-card__desc">Анти-слив, история покупок и продаж, калькулятор и Telegram-уведомления по событиям.</p>
         </div>
       </div>
     </section>
@@ -106,6 +106,13 @@
         <div class="advantage-item" data-animate>
           <span class="advantage-item__check">✅</span>
           <div>
+            <strong>Всегда актуальные цены и товары</strong>
+            <p>Обновления помогают быстрее находить выгодные позиции и не покупать на эмоциях.</p>
+          </div>
+        </div>
+        <div class="advantage-item" data-animate data-promo-only hidden>
+          <span class="advantage-item__check">✅</span>
+          <div>
             <strong>Токен «для друга»</strong>
             <p>Поделитесь доступом — второй токен на тот же срок в подарок.</p>
           </div>
@@ -138,14 +145,12 @@
       <p class="footer__small">© 2026 Таблица Калывана</p>
     </footer>
 
-    <!-- Browser-only footer (hidden inside Telegram WebApp) -->
     <div id="browserFooter" style="display:none" class="browser-footer">
-      <p>Откройте в Telegram-боте: <a id="botLink" href="https://t.me/TestKeyBot_bot" target="_blank" rel="noopener">@TestKeyBot_bot</a></p>
+      <p>Telegram-Bot: <a id="botLink" href="https://t.me/TestKeyBot_bot" target="_blank" rel="noopener">@TestKeyBot_bot</a></p>
       <p>Наш канал: <a id="channelLink" href="https://t.me/KalivanVC" target="_blank" rel="noopener">@KalivanVC</a></p>
     </div>
   </main>
 
-  <!-- Lightbox -->
   <div class="lightbox" id="lightbox">
     <div class="lightbox__backdrop" id="lightboxBackdrop"></div>
     <button class="lightbox__close" id="lightboxClose" aria-label="Закрыть">✕</button>

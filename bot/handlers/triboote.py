@@ -1,4 +1,3 @@
-"""Triboote payment flow."""
 from __future__ import annotations
 
 import logging
@@ -9,6 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from ..database import create_pending, get_pending, get_settings, mark_pending_status
 from ..services.delivery import deliver_purchase
+from ..services.settings_service import price_with_active_discount
 from ..services.triboote_api import TribooteError, create_payment
 
 log = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ async def on_pay_triboote(call: CallbackQuery) -> None:
     prices_rub = settings.get("prices_rub", {})
     plan_labels = {"1m": "1 \u043c\u0435\u0441\u044f\u0446", "2m": "2 \u043c\u0435\u0441\u044f\u0446\u0430", "3m": "3 \u043c\u0435\u0441\u044f\u0446\u0430", "6m": "6 \u043c\u0435\u0441\u044f\u0446\u0435\u0432", "forever": "Forever"}
 
-    amount = prices_rub.get(plan_code, 0)
+    amount = await price_with_active_discount(prices_rub.get(plan_code, 0))
     label = plan_labels.get(plan_code, plan_code)
 
     if amount <= 0:

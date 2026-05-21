@@ -1,4 +1,3 @@
-"""aiohttp server: WebApp static + Triboote webhook + health + optional admin web panel."""
 from __future__ import annotations
 
 import hmac
@@ -53,11 +52,18 @@ async def site_json_handler(request: web.Request) -> web.Response:
     from .config import site_config_for_webapp, BOT_USERNAME
     data = site_config_for_webapp()
     data["bot_username"] = BOT_USERNAME
+    data["bot_url"] = f"https://t.me/{BOT_USERNAME}"
+    settings = await get_settings()
+    promo = settings.get("promotion", {})
+    enabled = promo.get("enabled", False)
+    if isinstance(enabled, str):
+        enabled = enabled.lower() in ("true", "1", "yes", "on", "вкл")
+    data["promo_enabled"] = bool(enabled)
+    data["promo_text"] = promo.get("text", "")
     return web.json_response(data)
 
 
 def verify_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
-    """Verifies Telegram WebApp initData and returns the user dict if valid."""
     from urllib.parse import parse_qsl
     try:
         parsed = dict(parse_qsl(init_data))
@@ -65,15 +71,10 @@ def verify_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
             return None
         
         received_hash = parsed.pop("hash")
-        
-        # Sort key-value pairs alphabetically
         data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
         
-        # Secret key is SHA256 of bot token with constant string "WebAppData"
         import hashlib
         secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
-        
-        # Compute expected hash
         expected_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
         
         if hmac.compare_digest(received_hash, expected_hash):
@@ -115,14 +116,16 @@ async def select_plan_api_handler(request: web.Request) -> web.Response:
 
     discount_enabled, discount_pct = await get_active_discount()
     price_rub = plan["price_rub"]
+    price_stars = plan["price_stars"]
     if discount_enabled and discount_pct > 0:
         price_rub = await apply_discount(price_rub, discount_pct)
+        price_stars = await apply_discount(price_stars, discount_pct)
 
     from .keyboards import payment_methods_kb
     text = (
         "Вы выбрали:\n\n"
         f"📦 <b>{plan['label']}</b>\n"
-        f"💵 Цена: <b>{price_rub} ₽</b>\n\n"
+        f"💵 Цена: <b>{price_rub} ₽</b> / <b>{price_stars} ⭐</b>\n\n"
         "Выберите способ оплаты:"
     )
 
@@ -132,7 +135,8 @@ async def select_plan_api_handler(request: web.Request) -> web.Response:
 
     try:
         await bot.send_message(user_id, text, reply_markup=payment_methods_kb(plan_code))
-        return web.json_response({"ok": True})
+        from .config import BOT_USERNAME
+        return web.json_response({"ok": True, "bot_url": f"https://t.me/{BOT_USERNAME}"})
     except Exception as exc:
         log.error("Failed to send plan selection to user %s: %s", user_id, exc)
         return web.json_response({"ok": False, "error": str(exc)}, status=500)
@@ -144,10 +148,10 @@ async def triboote_success_handler(request: web.Request) -> web.Response:
         charset="utf-8",
         text=(
             "<!doctype html><meta charset=\'utf-8\'>"
-            "<title>\u041e\u043f\u043b\u0430\u0442\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430</title>"
+            "<title>Оплата завершена</title>"
             "<body style=\'font-family:system-ui;text-align:center;padding:40px\'>"
-            "<h2>\u2705 \u041f\u043b\u0430\u0442\u0451\u0436 \u043f\u043e\u043b\u0443\u0447\u0435\u043d</h2>"
-            "<p>\u0412\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u0439\u0442\u0435\u0441\u044c \u0432 Telegram \u2014 \u0431\u043e\u0442 \u043f\u0440\u0438\u0448\u043b\u0451\u0442 \u0442\u043e\u043a\u0435\u043d \u0438 \u0438\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u044e.</p>"
+            "<h2>✅ Платёж получен</h2>"
+            "<p>Возвращайтесь в Telegram — бот пришлёт токен и инструкцию.</p>"
             "</body>"
         ),
     )
@@ -155,7 +159,7 @@ async def triboote_success_handler(request: web.Request) -> web.Response:
 
 def _verify_triboote_signature(body: bytes, header_sig: str | None) -> bool:
     if not TRIBOOTE_WEBHOOK_SECRET:
-        log.warning("TRIBOOTE_WEBHOOK_SECRET not set \u2014 accepting without verification")
+        log.warning("TRIBOOTE_WEBHOOK_SECRET not set — accepting without verification")
         return True
     if not header_sig:
         return False
@@ -200,15 +204,17 @@ def make_triboote_webhook_handler(bot: Bot):
 
 
 @web.middleware
-async def _ngrok_skip_middleware(request: web.Request, handler):
+async def _performance_middleware(request: web.Request, handler):
     resp = await handler(request)
     if isinstance(resp, web.StreamResponse):
         resp.headers["ngrok-skip-browser-warning"] = "true"
+        if request.path.startswith("/static/"):
+            resp.headers["Cache-Control"] = "public, max-age=31536000"
     return resp
 
 
 def build_app(bot: Bot) -> web.Application:
-    app = web.Application(middlewares=[_ngrok_skip_middleware])
+    app = web.Application(middlewares=[_performance_middleware])
     app["bot"] = bot
     app.router.add_get("/", index_handler)
     app.router.add_get("/index.html", index_handler)
@@ -220,12 +226,8 @@ def build_app(bot: Bot) -> web.Application:
     app.router.add_post("/triboote/webhook", make_triboote_webhook_handler(bot))
     app.router.add_static("/static", path=str(WEBAPP_DIR), show_index=False)
 
-    # Optional hidden web admin panel
     if ADMIN_WEB_SECRET_PATH:
         async def web_admin_handler(request: web.Request) -> web.Response:
-            from aiohttp import BasicAuth
-            from .config import ADMIN_ID
-            # Simple auth check
             auth_header = request.headers.get("Authorization")
             if not auth_header:
                 return web.Response(
@@ -240,8 +242,8 @@ def build_app(bot: Bot) -> web.Application:
                     "<!doctype html><html><head><meta charset=\'utf-8\'><title>Admin</title>"
                     "<style>body{background:#0a0a0a;color:#00ff88;font-family:monospace;padding:40px}</style>"
                     "</head><body>"
-                    "<h1>\u041f\u0430\u043d\u0435\u043b\u044c \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430</h1>"
-                    "<p>\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 /adm \u0432 Telegram \u0434\u043b\u044f \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u044f.</p>"
+                    "<h1>Панель администратора</h1>"
+                    "<p>Используйте /adm в Telegram для управления.</p>"
                     "</body></html>"
                 ),
             )

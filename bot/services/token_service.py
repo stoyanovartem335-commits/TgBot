@@ -1,4 +1,3 @@
-"""Token generation via API server + MongoDB."""
 from __future__ import annotations
 
 import logging
@@ -14,12 +13,10 @@ class TokenGenerationError(RuntimeError):
 
 
 def generate_token() -> str:
-    """Generate a cryptographically secure token."""
     return secrets.token_hex(24)
 
 
 def compute_expiration_str(plan_code: str, days: int | None) -> str | None:
-    """Compute subscription expiration in DD.MM.YYYY format for API server."""
     from datetime import datetime, timedelta
     if days is None:
         return None
@@ -32,7 +29,6 @@ async def issue_tokens(
     days: int | None,
     count: int = 2,
 ) -> list[str]:
-    """Generate tokens via API server. Returns [main_token, friend_token]."""
     tokens = []
     expiration_str = compute_expiration_str(plan_code, days)
 

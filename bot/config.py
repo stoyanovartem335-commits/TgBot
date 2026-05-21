@@ -1,4 +1,3 @@
-"""Runtime configuration loaded from .env."""
 from __future__ import annotations
 
 import os
