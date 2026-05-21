@@ -62,7 +62,7 @@
 
   function returnToBotChat() {
     if (tg && typeof tg.close === 'function') {
-      tg.close();
+      try { tg.close(); } catch (e) {}
       return;
     }
     var url = botChatUrl();
@@ -74,11 +74,9 @@
     if (tg && typeof tg.sendData === 'function') {
       try {
         tg.sendData(payload);
-        setTimeout(returnToBotChat, 120);
-        return;
       } catch (err) {}
     }
-    returnToBotChat();
+    setTimeout(returnToBotChat, 200);
   }
 
   function renderPlans(plans) {
@@ -191,15 +189,6 @@
       if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
       document.body.style.pointerEvents = 'none';
 
-      var closed = false;
-      var timeoutId = setTimeout(function () {
-        if (!closed) {
-          closed = true;
-          document.body.style.pointerEvents = '';
-          returnToBotChat();
-        }
-      }, 1500);
-
       fetch('/api/select-plan', {
         method: 'POST',
         headers: {
@@ -212,25 +201,22 @@
         })
       })
       .then(function (res) {
-        if (!closed) {
-          closed = true;
-          clearTimeout(timeoutId);
-          document.body.style.pointerEvents = '';
-          if (res.ok) {
-            returnToBotChat();
-          } else {
-            sendSelectionFallback(plan);
-          }
+        document.body.style.pointerEvents = '';
+        if (res.ok) {
+          returnToBotChat();
+        } else {
+          sendSelectionFallback(plan);
         }
       })
       .catch(function () {
-        if (!closed) {
-          closed = true;
-          clearTimeout(timeoutId);
-          document.body.style.pointerEvents = '';
-          sendSelectionFallback(plan);
-        }
+        document.body.style.pointerEvents = '';
+        sendSelectionFallback(plan);
       });
+
+      setTimeout(function () {
+        document.body.style.pointerEvents = '';
+        returnToBotChat();
+      }, 2000);
     } else {
       var startParam = 'buy_' + plan.code;
       var botUrl = 'https://t.me/' + (botUsername || 'TestKeyBot_bot') + '?start=' + startParam;

@@ -601,61 +601,16 @@ img, video, canvas, svg {
 .plan-card {
   position: relative;
   display: block;
-  background: var(--bg-card);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  cursor: pointer;
-  transition: var(--transition);
-  overflow: hidden;
-  z-index: 1;
-}
-
-.plan-card__inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 22px 24px;
-  background: transparent;
-  position: relative;
-  z-index: 2;
-  overflow: hidden;
-  transition: var(--transition);
-}
-
-.plan-card:hover {
-  border-color: rgba(0, 255, 136, 0.5);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(0, 255, 136, 0.05);
-}
-
-.plan-card:active {
-  transform: translateY(-1px) scale(0.98);
-}
-
-.plan-card:hover .plan-card__inner {
-  background: rgba(255, 255, 255, 0.01);
-}
-
-.plan-card__inner::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.02), transparent);
-  pointer-events: none;
-  border-radius: inherit;
-}
-
-.plan-card--highlighted {
   background: transparent;
   border: none;
   padding: 2px;
+  cursor: pointer;
+  transition: var(--transition);
   overflow: visible;
+  z-index: 1;
 }
 
-.plan-card--highlighted::before {
+.plan-card::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -668,15 +623,33 @@ img, video, canvas, svg {
   z-index: 0;
 }
 
-.plan-card--highlighted:hover::before {
+.plan-card:hover::before {
   opacity: 1;
 }
 
-.plan-card--highlighted:hover {
+.plan-card:hover {
   box-shadow: 0 12px 40px rgba(0, 255, 136, 0.15);
 }
 
-.plan-card--highlighted .plan-card__inner::before {
+.plan-card:active {
+  transform: translateY(-1px) scale(0.98);
+}
+
+.plan-card__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 22px 24px;
+  background: rgba(10, 10, 10, 0.95);
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  transition: var(--transition);
+  border-radius: calc(var(--radius-xl) - 2px);
+}
+
+.plan-card__inner::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -693,6 +666,10 @@ img, video, canvas, svg {
   pointer-events: none;
   border-radius: inherit;
   z-index: 1;
+}
+
+.plan-card--highlighted .plan-card__inner {
+  padding-top: 38px;
 }
 
 @keyframes shimmer {
@@ -720,16 +697,6 @@ img, video, canvas, svg {
   background: rgba(0, 255, 136, 0.12);
   border: 1px solid rgba(0, 255, 136, 0.3);
   z-index: 3;
-}
-
-.plan-card--highlighted .plan-card__inner {
-  background: rgba(10, 10, 10, 0.95);
-  border-radius: calc(var(--radius-xl) - 2px);
-  padding-top: 38px;
-}
-
-.plan-card--highlighted:hover .plan-card__inner {
-  background: rgba(5, 5, 5, 0.97);
 }
 
 .plan-card__info {
