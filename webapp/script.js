@@ -56,18 +56,16 @@
     });
   }
 
-  function botChatUrl() {
-    return 'https://t.me/' + (botUsername || 'TestKeyBot_bot');
-  }
-
-  function returnToBotChat() {
+  function closeWebApp() {
     if (tg && typeof tg.close === 'function') {
       try { tg.close(); } catch (e) {}
     }
-    setTimeout(function () {
-      var url = botChatUrl();
-      try { window.location.href = url; } catch (e) {}
-    }, 300);
+  }
+
+  function redirectToBot(planCode) {
+    var startParam = 'buy_' + (planCode || '');
+    var url = 'https://t.me/' + (botUsername || 'TestKeyBot_bot') + '?start=' + startParam;
+    window.location.href = url;
   }
 
   function sendSelectionFallback(plan) {
@@ -77,7 +75,7 @@
         tg.sendData(payload);
       } catch (err) {}
     }
-    setTimeout(returnToBotChat, 150);
+    setTimeout(closeWebApp, 150);
   }
 
   function renderPlans(plans) {
@@ -190,12 +188,15 @@
       if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
       document.body.style.pointerEvents = 'none';
 
+      var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub, price_stars: plan.price_stars });
+
       var closed = false;
       var timeoutId = setTimeout(function () {
         if (!closed) {
           closed = true;
           document.body.style.pointerEvents = '';
-          returnToBotChat();
+          try { tg.sendData(payload); } catch (e) {}
+          closeWebApp();
         }
       }, 1500);
 
@@ -215,11 +216,8 @@
           closed = true;
           clearTimeout(timeoutId);
           document.body.style.pointerEvents = '';
-          if (res.ok) {
-            returnToBotChat();
-          } else {
-            sendSelectionFallback(plan);
-          }
+          try { tg.sendData(payload); } catch (e) {}
+          closeWebApp();
         }
       })
       .catch(function () {
@@ -227,13 +225,12 @@
           closed = true;
           clearTimeout(timeoutId);
           document.body.style.pointerEvents = '';
-          sendSelectionFallback(plan);
+          try { tg.sendData(payload); } catch (e) {}
+          closeWebApp();
         }
       });
     } else {
-      var startParam = 'buy_' + plan.code;
-      var botUrl = 'https://t.me/' + (botUsername || 'TestKeyBot_bot') + '?start=' + startParam;
-      window.location.href = botUrl;
+      redirectToBot(plan.code);
     }
   }
 
