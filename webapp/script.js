@@ -68,14 +68,15 @@
     window.location.href = url;
   }
 
-  function sendSelectionFallback(plan) {
+  function selectPlan(plan) {
     var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub, price_stars: plan.price_stars });
-    if (tg && typeof tg.sendData === 'function') {
-      try {
-        tg.sendData(payload);
-      } catch (err) {}
+    if (isWebApp && tg && typeof tg.sendData === 'function') {
+      if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+      document.body.style.pointerEvents = 'none';
+      tg.sendData(payload);
+    } else {
+      redirectToBot(plan.code);
     }
-    setTimeout(closeWebApp, 150);
   }
 
   function renderPlans(plans) {
@@ -184,51 +185,11 @@
   }
 
   function selectPlan(plan) {
-    if (isWebApp && tg && tg.initData) {
+    var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub, price_stars: plan.price_stars });
+    if (isWebApp && tg && typeof tg.sendData === 'function') {
       if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
       document.body.style.pointerEvents = 'none';
-
-      var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub, price_stars: plan.price_stars });
-
-      var closed = false;
-      var timeoutId = setTimeout(function () {
-        if (!closed) {
-          closed = true;
-          document.body.style.pointerEvents = '';
-          try { tg.sendData(payload); } catch (e) {}
-          closeWebApp();
-        }
-      }, 1500);
-
-      fetch('/api/select-plan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
-        },
-        body: JSON.stringify({
-          initData: tg.initData,
-          plan: plan.code
-        })
-      })
-      .then(function (res) {
-        if (!closed) {
-          closed = true;
-          clearTimeout(timeoutId);
-          document.body.style.pointerEvents = '';
-          try { tg.sendData(payload); } catch (e) {}
-          closeWebApp();
-        }
-      })
-      .catch(function () {
-        if (!closed) {
-          closed = true;
-          clearTimeout(timeoutId);
-          document.body.style.pointerEvents = '';
-          try { tg.sendData(payload); } catch (e) {}
-          closeWebApp();
-        }
-      });
+      tg.sendData(payload);
     } else {
       redirectToBot(plan.code);
     }
