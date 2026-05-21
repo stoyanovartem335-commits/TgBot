@@ -617,9 +617,7 @@ img, video, canvas, svg {
   justify-content: space-between;
   width: 100%;
   padding: 22px 24px;
-  background: rgba(3, 23, 14, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: #052615;
   border-radius: calc(var(--radius-xl) - 2px);
   position: relative;
   overflow: hidden;
@@ -627,7 +625,7 @@ img, video, canvas, svg {
 }
 
 .plan-card:hover .plan-card__inner {
-  background: rgba(5, 38, 23, 0.95);
+  background: #083b20;
 }
 
 .plan-card__inner::after {
@@ -717,12 +715,12 @@ img, video, canvas, svg {
 }
 
 .plan-card--highlighted .plan-card__inner {
-  background: rgba(3, 23, 14, 0.85);
+  background: #052615;
   padding-top: 38px;
 }
 
 .plan-card--highlighted:hover .plan-card__inner {
-  background: rgba(5, 38, 23, 0.9);
+  background: #083b20;
 }
 
 .plan-card__info {
