@@ -9,6 +9,11 @@ from ..config import API_ADMIN_TOKEN, API_SERVER_URL
 
 log = logging.getLogger(__name__)
 
+
+class ApiClientError(RuntimeError):
+    pass
+
+
 _session: aiohttp.ClientSession | None = None
 
 
