@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import os
 from hashlib import sha256
 
 from aiogram import Bot
@@ -61,6 +62,19 @@ async def site_json_handler(request: web.Request) -> web.Response:
     data["promo_enabled"] = bool(enabled)
     data["promo_text"] = promo.get("text", "")
     return web.json_response(data)
+
+
+async def images_json_handler(request: web.Request) -> web.Response:
+    images_dir = WEBAPP_DIR / "images"
+    if not images_dir.exists():
+        return web.json_response({"images": []})
+    valid_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    images = sorted([
+        f"/static/images/{f.name}"
+        for f in images_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in valid_extensions
+    ])
+    return web.json_response({"images": images})
 
 
 def verify_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
@@ -224,6 +238,7 @@ def build_app(bot: Bot) -> web.Application:
     app.router.add_get("/health", health_handler)
     app.router.add_get("/api/plans", plans_json_handler)
     app.router.add_get("/api/site", site_json_handler)
+    app.router.add_get("/api/images", images_json_handler)
     app.router.add_post("/api/select-plan", select_plan_api_handler)
     app.router.add_get("/triboote/success", triboote_success_handler)
     app.router.add_post("/triboote/webhook", make_triboote_webhook_handler(bot))
