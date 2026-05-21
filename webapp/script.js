@@ -61,20 +61,11 @@
   }
 
   function returnToBotChat() {
-    var url = botChatUrl();
-    if (tg && typeof tg.openTelegramLink === 'function') {
-      try {
-        tg.openTelegramLink(url);
-        setTimeout(function () {
-          if (typeof tg.close === 'function') tg.close();
-        }, 120);
-        return;
-      } catch (err) {}
-    }
     if (tg && typeof tg.close === 'function') {
       tg.close();
       return;
     }
+    var url = botChatUrl();
     window.location.href = url;
   }
 
