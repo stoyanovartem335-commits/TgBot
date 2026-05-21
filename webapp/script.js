@@ -255,14 +255,11 @@
   }
 
   var SCREENSHOT_IMAGES = [
-    '/static/images/photo_2026-05-17_21-31-23.jpg',
-    '/static/images/photo_2026-05-17_21-31-23 (2).jpg',
-    '/static/images/photo_2026-05-17_21-31-24.jpg',
-    '/static/images/photo_2026-05-17_21-31-24 (2).jpg',
-    '/static/images/photo_2026-05-17_21-31-25.jpg',
-    '/static/images/photo_2026-05-17_21-31-25 (2).jpg',
-    '/static/images/photo_2026-05-17_21-31-26.jpg',
-    '/static/images/photo_2026-05-17_21-31-26 (2).jpg'
+    '/static/images/IMG_20260521_225930_946.jpg',
+    '/static/images/IMG_20260521_225933_797.jpg',
+    '/static/images/IMG_20260521_225937_166.jpg',
+    '/static/images/IMG_20260521_225938_412.jpg',
+    '/static/images/IMG_20260521_225939_014.jpg'
   ];
 
   var carouselDots = document.getElementById('carouselDots');
