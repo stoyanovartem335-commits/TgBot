@@ -1,0 +1,14 @@
+﻿.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.idea/
+.vscode/
+data/
+*.db
+*.sqlite
+*.log
+tokens.txt

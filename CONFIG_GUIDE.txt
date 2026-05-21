@@ -1,0 +1,148 @@
+═══════════════════════════════════════════════════════
+  ИНСТРУКЦИЯ ПО НАСТРОЙКЕ — Таблица Калывана
+═══════════════════════════════════════════════════════
+
+Этот файл объясняет, куда вставлять все ключи, токены и URL.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. TELEGRAM BOT (tg-bot/.env)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BOT_TOKEN=
+  → Где взять: открой @BotFather в Telegram, напиши /newbot
+  → BotFather пришлёт токен вида: 1234567890:AAEx...XYZ
+  → Вставь сюда эту строку
+
+ADMIN_ID=
+  → Где взять: открой @userinfobot в Telegram, нажми Start
+  → Он пришлёт твой ID — это число, например 123456789
+  → Вставь это число
+
+MONGO_URI=
+  → Где взять: зарегистрируйся на mongodb.com/cloud/atlas
+  → Создай кластер, создай пользователя, получи connection string
+  → Формат: mongodb+srv://user:pass@cluster.mongodb.net/Connect?...
+  → База данных должна называться "Connect"
+
+API_SERVER_URL=
+  → URL твоего API сервера на Render.com
+  → Пример: https://kalivan-api-server.onrender.com
+  → Без слеша в конце!
+
+API_ADMIN_TOKEN=
+  → Придумай длинную случайную строку
+  → Используй ТО ЖЕ ЗНАЧЕНИЕ в api-server/.env как ADMIN_TOKEN
+  → Пример: s3cur3_t0k3n_x7k9m2p4
+
+WEBAPP_URL=
+  → URL твоего бота на Render.com (там же хостится WebApp)
+  → Пример: https://kalivan-telegram-bot.onrender.com
+  → Без слеша в конце!
+  → ДОЛЖЕН быть HTTPS
+
+TRIBOOTE_API_URL=
+  → URL API Triboote (узнай в личном кабинете Triboote)
+  → Пример: https://api.triboote.com/v1
+
+TRIBOOTE_API_KEY=
+  → Ключ API из личного кабинета Triboote
+
+TRIBOOTE_WEBHOOK_SECRET=
+  → Придумай длинную случайную строку
+  → Нужна для проверки подписи webhook от Triboote
+
+TG_CHANNEL_URL=
+  → Ссылка на твой Telegram-канал с инструкциями
+  → Пример: https://t.me/KalivanVC
+
+SUPPORT_USERNAME=
+  → Твой username в Telegram (без @)
+  → Пример: KalivanVC
+
+REQUISITES_TEXT=
+  → Название банка для оплаты по реквизитам
+  → Пример: Сбербанк
+
+REQUISITES_CARD=
+  → Номер карты
+  → Пример: 2202 2020 2020 2020
+
+REQUISITES_NAME=
+  → Имя получателя
+  → Пример: Иван И.
+
+ZIP_FILE_PATH=
+  → Путь к ZIP архиву со скриптом
+  → По умолчанию: ./Price_by_KALYVAN.zip
+  → Файл должен лежать в корне репозитория бота
+
+ADMIN_WEB_SECRET_PATH=
+  → Секретный путь для веб-админки (оставь пустым чтобы отключить)
+  → Пример: super-secret-admin-2024
+  → Админка будет доступна по: WEBAPP_URL/{этот_путь}/admin
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. API SERVER (api-server/.env)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MONGO_URI=
+  → ТО ЖЕ ЗНАЧЕНИЕ, что и в боте
+  → mongodb+srv://user:pass@cluster.mongodb.net/Connect?...
+
+ADMIN_TOKEN=
+  → ТО ЖЕ ЗНАЧЕНИЕ, что и API_ADMIN_TOKEN в боте
+  → Это связывает бот и API сервер
+
+PORT=
+  → Оставь 10000 (Render использует этот порт)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. КАК НАСТРОИТЬ TRIBOOTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Зарегистрируйся на triboote.com
+2. В личном кабинете найди API ключ
+3. Вставь его в TRIBOOTE_API_KEY
+4. В настройках webhook укажи:
+   URL: https://YOUR-BOT-SERVICE.onrender.com/triboote/webhook
+   Secret: то, что в TRIBOOTE_WEBHOOK_SECRET
+5. Success URL: https://YOUR-BOT-SERVICE.onrender.com/triboote/success
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. КАК НАСТРОИТЬ RENDER.COM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Зарегистрируйся на render.com
+2. Подключи GitHub аккаунт
+3. Создай 2 Web Service:
+   a) API Server (Node.js)
+   b) Telegram Bot (Python)
+4. Для каждого сервиса:
+   - Выбери репозиторий
+   - Укажи build и start команды (см. render.yaml)
+   - Заполни все переменные окружения
+5. Дождись деплоя
+6. Проверь health endpoint в браузере
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. КАК НАСТРОИТЬ MONGODB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Создай аккаунт на mongodb.com/cloud/atlas
+2. Создай проект и кластер (бесплатный M0)
+3. Database Access → Create user → запомни логин/пароль
+4. Network Access → Add IP → 0.0.0.0/0 (для Render)
+5. Connect → Connect your application → скопируй connection string
+6. Замени <password> на свой пароль
+7. Вставь в MONGO_URI в обоих .env файлах
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+После настройки всех переменных:
+1. Задеплой API сервер первым
+2. Подожди пока он запустится
+3. Задеплой Telegram бот
+4. Открой бота в Telegram, напиши /start
+5. Проверь что всё работает
+
+Если что-то не работает — смотри логи в Render Dashboard.

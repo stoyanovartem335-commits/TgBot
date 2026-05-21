@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Таблица Калывана</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow bg-glow--top"></div>
+  <div class="bg-glow bg-glow--bottom"></div>
+
+  <div class="progress-bar" id="progressBar"></div>
+
+  <main class="container">
+    <section class="hero" id="hero">
+      <div class="hero__badge">⚡ Инструмент перепродавца</div>
+      <h1 class="hero__title">Таблица<br /><span class="text-gradient">Калывана</span></h1>
+      <p class="hero__subtitle">Живой документ с ежедневными товарами и средними ценами для перепродаж на Arizona RP.</p>
+      <div class="hero__actions">
+        <button class="btn btn--primary" id="heroBuyBtn">Приобрести</button>
+        <button class="btn btn--ghost" id="heroScrollBtn">Узнать больше</button>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <h2 class="section__title">Возможности</h2>
+      <div class="features-grid">
+        <div class="feature-card" data-animate>
+          <div class="feature-card__glow"></div>
+          <div class="feature-card__icon">📊</div>
+          <h3 class="feature-card__title">Ежедневное обновление</h3>
+          <p class="feature-card__desc">Товары и цены обновляются каждый день — всегда свежая аналитика.</p>
+        </div>
+        <div class="feature-card" data-animate>
+          <div class="feature-card__glow"></div>
+          <div class="feature-card__icon">🏪</div>
+          <h3 class="feature-card__title">Торговая площадка</h3>
+          <p class="feature-card__desc">Удобный просмотр лавок и предложений на всех серверах.</p>
+        </div>
+        <div class="feature-card" data-animate>
+          <div class="feature-card__glow"></div>
+          <div class="feature-card__icon">🚗</div>
+          <h3 class="feature-card__title">Таблица на авто</h3>
+          <p class="feature-card__desc">Отдельная аналитика по машинам — цены, ликвидность, даты.</p>
+        </div>
+        <div class="feature-card" data-animate>
+          <div class="feature-card__glow"></div>
+          <div class="feature-card__icon">⚙️</div>
+          <h3 class="feature-card__title">Дополнительные функции</h3>
+          <p class="feature-card__desc">Очередь VC, аналоги аксессуаров, средние цены и другое.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="screenshots">
+      <h2 class="section__title">Скриншоты</h2>
+      <div class="carousel" id="carousel">
+        <div class="carousel__track" id="carouselTrack">
+          <div class="carousel__item" data-index="0">
+            <img src="/static/images/photo_2026-05-17_21-31-23.jpg" alt="Скриншот 1" loading="lazy" />
+          </div>
+          <div class="carousel__item" data-index="1">
+            <img src="/static/images/photo_2026-05-17_21-31-23 (2).jpg" alt="Скриншот 2" loading="lazy" />
+          </div>
+          <div class="carousel__item" data-index="2">
+            <img src="/static/images/photo_2026-05-17_21-31-24.jpg" alt="Скриншот 3" loading="lazy" />
+          </div>
+          <div class="carousel__item" data-index="3">
+            <img src="/static/images/photo_2026-05-17_21-31-24 (2).jpg" alt="Скриншот 4" loading="lazy" />
+          </div>
+          <div class="carousel__item" data-index="4">
+            <img src="/static/images/photo_2026-05-17_21-31-25.jpg" alt="Скриншот 5" loading="lazy" />
+          </div>
+          <div class="carousel__item" data-index="5">
+            <img src="/static/images/photo_2026-05-17_21-31-25 (2).jpg" alt="Скриншот 6" loading="lazy" />
+          </div>
+          <div class="carousel__item" data-index="6">
+            <img src="/static/images/photo_2026-05-17_21-31-26.jpg" alt="Скриншот 7" loading="lazy" />
+          </div>
+          <div class="carousel__item" data-index="7">
+            <img src="/static/images/photo_2026-05-17_21-31-26 (2).jpg" alt="Скриншот 8" loading="lazy" />
+          </div>
+        </div>
+        <div class="carousel__dots" id="carouselDots"></div>
+      </div>
+    </section>
+
+    <section class="section" id="advantages">
+      <h2 class="section__title">Преимущества</h2>
+      <div class="advantages-list">
+        <div class="advantage-item" data-animate>
+          <span class="advantage-item__check">✅</span>
+          <div>
+            <strong>Личный токен</strong>
+            <p>Каждый пользователь получает уникальный токен доступа.</p>
+          </div>
+        </div>
+        <div class="advantage-item" data-animate>
+          <span class="advantage-item__check">✅</span>
+          <div>
+            <strong>Токен «для друга»</strong>
+            <p>Поделитесь доступом — второй токен на тот же срок в подарок.</p>
+          </div>
+        </div>
+        <div class="advantage-item" data-animate>
+          <span class="advantage-item__check">✅</span>
+          <div>
+            <strong>Google Sheets по запросу</strong>
+            <p>По запросу — копия таблицы в формате Google Sheets (выдаётся вручную).</p>
+          </div>
+        </div>
+        <div class="advantage-item" data-animate>
+          <span class="advantage-item__check">✅</span>
+          <div>
+            <strong>Инструкция в Telegram</strong>
+            <p>Подробные инструкции и обновления — в нашем Telegram-канале.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="pricing">
+      <h2 class="section__title">Тарифы</h2>
+      <p class="section__subtitle">Выберите подходящий план и начните перепродавать уже сегодня</p>
+      <div class="plans-grid" id="plansGrid"></div>
+    </section>
+
+    <footer class="footer">
+      <p>Оплата: Telegram Stars, Triboote или банковский перевод.</p>
+      <p class="footer__small">© 2026 Таблица Калывана</p>
+    </footer>
+  </main>
+
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox">
+    <div class="lightbox__backdrop" id="lightboxBackdrop"></div>
+    <button class="lightbox__close" id="lightboxClose" aria-label="Закрыть">✕</button>
+    <button class="lightbox__nav lightbox__nav--prev" id="lightboxPrev" aria-label="Предыдущий">‹</button>
+    <button class="lightbox__nav lightbox__nav--next" id="lightboxNext" aria-label="Следующий">›</button>
+    <img class="lightbox__image" id="lightboxImage" src="" alt="" />
+    <div class="lightbox__counter" id="lightboxCounter"></div>
+  </div>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>

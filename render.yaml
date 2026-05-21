@@ -1,0 +1,43 @@
+﻿services:
+  - type: web
+    name: kalivan-telegram-bot
+    runtime: python
+    plan: starter
+    region: oregon
+
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m bot.main
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: API_SERVER_URL
+        sync: false
+      - key: API_ADMIN_TOKEN
+        sync: false
+      - key: WEBAPP_URL
+        sync: false
+      - key: TRIBOOTE_API_URL
+        sync: false
+      - key: TRIBOOTE_API_KEY
+        sync: false
+      - key: TRIBOOTE_WEBHOOK_SECRET
+        sync: false
+      - key: TG_CHANNEL_URL
+        sync: false
+      - key: SUPPORT_USERNAME
+        value: KalivanVC
+      - key: REQUISITES_TEXT
+        value: Сбербанк
+      - key: REQUISITES_CARD
+        value: "2202 2020 2020 2020"
+      - key: REQUISITES_NAME
+        value: "Иван И."
+
+    healthCheckPath: /health
