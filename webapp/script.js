@@ -2,11 +2,14 @@
   'use strict';
 
   var tg = window.Telegram && window.Telegram.WebApp;
-  var isWebApp = tg && !!tg.initData;
+
+  function checkIsWebApp() {
+    return tg && tg.platform && tg.platform !== 'unknown';
+  }
 
   if (tg) {
     tg.ready();
-    if (isWebApp) tg.expand();
+    if (checkIsWebApp()) tg.expand();
   }
 
   var plansEl = document.getElementById('plansGrid');
@@ -70,10 +73,18 @@
 
   function selectPlan(plan) {
     var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub, price_stars: plan.price_stars });
-    if (isWebApp && tg && typeof tg.sendData === 'function') {
+    if (checkIsWebApp()) {
       if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
       document.body.style.pointerEvents = 'none';
-      tg.sendData(payload);
+      try {
+        if (typeof tg.sendData === 'function') {
+          tg.sendData(payload);
+        } else {
+          tg.close();
+        }
+      } catch (e) {
+        tg.close();
+      }
     } else {
       redirectToBot(plan.code);
     }
@@ -184,16 +195,6 @@
     });
   }
 
-  function selectPlan(plan) {
-    var payload = JSON.stringify({ plan: plan.code, label: plan.label, price_rub: plan.price_rub, price_stars: plan.price_stars });
-    if (isWebApp && tg && typeof tg.sendData === 'function') {
-      if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-      document.body.style.pointerEvents = 'none';
-      tg.sendData(payload);
-    } else {
-      redirectToBot(plan.code);
-    }
-  }
 
   if (buyBtn) {
     buyBtn.addEventListener('click', function () {
@@ -239,7 +240,7 @@
         }
       }
       togglePromoAdvantages(!!cfg.promo_enabled);
-      if (!isWebApp) {
+      if (!checkIsWebApp()) {
         var footer = document.getElementById('browserFooter');
         if (footer) footer.style.display = 'block';
       }
