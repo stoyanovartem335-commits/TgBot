@@ -209,7 +209,10 @@ async def _performance_middleware(request: web.Request, handler):
     if isinstance(resp, web.StreamResponse):
         resp.headers["ngrok-skip-browser-warning"] = "true"
         if request.path.startswith("/static/"):
-            resp.headers["Cache-Control"] = "public, max-age=31536000"
+            if any(request.path.endswith(ext) for ext in (".js", ".css", ".html")):
+                resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            else:
+                resp.headers["Cache-Control"] = "public, max-age=31536000"
     return resp
 
 

@@ -600,15 +600,15 @@ img, video, canvas, svg {
 
 .plan-card {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px;
-  background: transparent;
+  display: block;
+  background: var(--bg-card);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
   cursor: pointer;
   transition: var(--transition);
-  overflow: visible;
+  overflow: hidden;
   z-index: 1;
 }
 
@@ -618,58 +618,62 @@ img, video, canvas, svg {
   justify-content: space-between;
   width: 100%;
   padding: 22px 24px;
-  background: rgba(4, 25, 15, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: calc(var(--radius-xl) - 2px);
+  background: transparent;
   position: relative;
   z-index: 2;
   overflow: hidden;
-  transition: background 0.3s ease;
+  transition: var(--transition);
+}
+
+.plan-card:hover {
+  border-color: rgba(0, 255, 136, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0, 255, 136, 0.05);
+}
+
+.plan-card:active {
+  transform: translateY(-1px) scale(0.98);
 }
 
 .plan-card:hover .plan-card__inner {
-  background: rgba(6, 38, 23, 0.9);
+  background: rgba(255, 255, 255, 0.01);
 }
 
 .plan-card__inner::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.04), transparent);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.02), transparent);
   pointer-events: none;
   border-radius: inherit;
 }
 
-.plan-card::before {
+.plan-card--highlighted {
+  background: transparent;
+  border: none;
+  padding: 2px;
+  overflow: visible;
+}
+
+.plan-card--highlighted::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, var(--green-secondary), var(--green-dark));
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  z-index: 0;
-}
-
-.plan-card:hover {
-  transform: translateY(-1px);
-}
-.plan-card:hover::before { opacity: 1; }
-.plan-card:active { transform: scale(0.98); }
-
-.plan-card--highlighted::before {
   opacity: 0.35;
   background: linear-gradient(135deg, var(--green-primary), var(--green-secondary), var(--green-primary), var(--green-secondary));
   background-size: 300% 300%;
   animation: gradientShift 3s ease infinite;
   transition: opacity 0.3s ease;
+  z-index: 0;
 }
+
 .plan-card--highlighted:hover::before {
   opacity: 1;
 }
+
 .plan-card--highlighted:hover {
-  box-shadow: 0 0 24px rgba(0,255,136,0.12);
+  box-shadow: 0 12px 40px rgba(0, 255, 136, 0.15);
 }
 
 .plan-card--highlighted .plan-card__inner::before {
@@ -688,7 +692,7 @@ img, video, canvas, svg {
   animation: shimmer 4s ease-in-out infinite;
   pointer-events: none;
   border-radius: inherit;
-  z-index: 0;
+  z-index: 1;
 }
 
 @keyframes shimmer {
@@ -713,18 +717,19 @@ img, video, canvas, svg {
   letter-spacing: 0;
   padding: 3px 10px;
   border-radius: 100px;
-  background: rgba(0,255,136,0.1);
-  border: 1px solid rgba(0,255,136,0.2);
-  z-index: 2;
+  background: rgba(0, 255, 136, 0.12);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  z-index: 3;
 }
 
 .plan-card--highlighted .plan-card__inner {
-  background: rgba(4, 25, 15, 0.82);
+  background: rgba(10, 10, 10, 0.95);
+  border-radius: calc(var(--radius-xl) - 2px);
   padding-top: 38px;
 }
 
 .plan-card--highlighted:hover .plan-card__inner {
-  background: rgba(6, 38, 23, 0.88);
+  background: rgba(5, 5, 5, 0.97);
 }
 
 .plan-card__info {
