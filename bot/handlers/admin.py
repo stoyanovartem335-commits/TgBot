@@ -48,14 +48,15 @@ async def show_admin_main(target, state: FSMContext | None = None) -> None:
     settings = await get_settings()
     total = await get_total_purchases()
     prices_rub = settings.get("prices_rub", {})
+    prices_stars = settings.get("prices_stars", {})
 
     text = (
         "\U0001f6e0 <b>\u041f\u0430\u043d\u0435\u043b\u044c \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430</b>\n\n"
         f"\U0001f4ca \u0412\u0441\u0435\u0433\u043e \u043f\u043e\u043a\u0443\u043f\u043e\u043a: <b>{total}</b>\n\n"
-        "\U0001f4b0 \u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u0446\u0435\u043d\u044b (\u20bd):\n"
+        "\U0001f4b0 \u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u0446\u0435\u043d\u044b:\n"
     )
     for code in ["1m", "2m", "3m", "6m", "forever"]:
-        text += f"  {PLAN_LABELS[code]}: {prices_rub.get(code, 0)} \u20bd\n"
+        text += f"  {PLAN_LABELS[code]}: {prices_rub.get(code, 0)} \u20bd / {prices_stars.get(code, 0)} \u2b50\n"
 
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -161,8 +162,35 @@ async def adm_save_price_rub(message: Message, state: FSMContext) -> None:
     prices_rub = settings.get("prices_rub", {})
     prices_rub[plan_code] = new_price
     await update_settings({"prices_rub": prices_rub})
+    await state.update_data(rub_price=new_price)
+    await state.set_state(AdminFSM.waiting_price_stars)
+    await message.answer(
+        f"\u2705 \u0426\u0435\u043d\u0430 (\u20bd) \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0430: {new_price} \u20bd.\n\n"
+        f"\u0422\u0435\u043f\u0435\u0440\u044c \u043e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0446\u0435\u043d\u0443 \u0432 \u2b50 \u0434\u043b\u044f <b>{PLAN_LABELS.get(plan_code, plan_code)}</b>:"
+    )
+
+
+@router.message(AdminFSM.waiting_price_stars, F.text)
+async def adm_save_price_stars(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        return
+    try:
+        new_price = int(message.text.strip())
+    except ValueError:
+        await message.answer("\u041e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0446\u0435\u043b\u043e\u0435 \u0447\u0438\u0441\u043b\u043e.")
+        return
+    data = await state.get_data()
+    plan_code = data.get("plan_code", "1m")
+    rub_price = data.get("rub_price", "?")
+    settings = await get_settings()
+    prices_stars = settings.get("prices_stars", {})
+    prices_stars[plan_code] = new_price
+    await update_settings({"prices_stars": prices_stars})
     await state.clear()
-    await message.answer(f"\u2705 \u0426\u0435\u043d\u0430 {PLAN_LABELS[plan_code]} = {new_price} \u20bd \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0430.")
+    await message.answer(
+        f"\u2705 \u0426\u0435\u043d\u044b \u0434\u043b\u044f {PLAN_LABELS[plan_code]} \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u044b:\n"
+        f"{rub_price} \u20bd / {new_price} \u2b50"
+    )
 
 
 @router.callback_query(F.data == "adm:promo")
@@ -182,8 +210,9 @@ async def adm_promo(call: CallbackQuery) -> None:
     )
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="\U0001f504 \u0421\u043a\u0438\u0434\u043a\u0430 " + ("\u0412\u042b\u041a\u041b" if discounts.get('enabled') else "\u0412\u041a\u041b"), callback_data="adm:toggle_discount")],
-        [InlineKeyboardButton(text="\U0001f504 \u041f\u0440\u043e\u043c\u043e " + ("\u0412\u042b\u041a\u041b" if promotion.get('enabled') else "\u0412\u041a\u041b"), callback_data="adm:toggle_promo")],
+        [InlineKeyboardButton(text="\U0001f504 \u0421\u043a\u0438\u0434\u043a\u0430 " + ("\u0412\u041a\u041b" if discounts.get('enabled') else "\u0412\u042b\u041a\u041b"), callback_data="adm:toggle_discount")],
+        [InlineKeyboardButton(text="\U0001f504 \u041f\u0440\u043e\u043c\u043e " + ("\u0412\u041a\u041b" if promotion.get('enabled') else "\u0412\u042b\u041a\u041b"), callback_data="adm:toggle_promo")],
+        [InlineKeyboardButton(text="\U0001f4c8 \u0423\u0441\u0442. % \u0441\u043a\u0438\u0434\u043a\u0438", callback_data="adm:set_discount_pct")],
         [InlineKeyboardButton(text="\u21a9\ufe0f \u041d\u0430\u0437\u0430\u0434", callback_data="adm:back")],
     ])
     await call.message.edit_text(text, reply_markup=kb)
@@ -215,6 +244,34 @@ async def adm_toggle_promo(call: CallbackQuery) -> None:
     await adm_promo(call)
 
 
+@router.callback_query(F.data == "adm:set_discount_pct")
+async def adm_set_discount_pct(call: CallbackQuery, state: FSMContext) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    await call.answer()
+    await state.set_state(AdminFSM.waiting_discount_pct)
+    await call.message.answer("\u041e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u043d\u043e\u0432\u044b\u0439 \u043f\u0440\u043e\u0446\u0435\u043d\u0442 \u0441\u043a\u0438\u0434\u043a\u0438 (\u0446\u0435\u043b\u043e\u0435 \u0447\u0438\u0441\u043b\u043e, \u043d\u0430\u043f\u0440. 10):")
+
+
+@router.message(AdminFSM.waiting_discount_pct, F.text)
+async def adm_save_discount_pct(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        return
+    try:
+        pct = int(message.text.strip())
+        if pct < 0 or pct > 100:
+            raise ValueError
+    except ValueError:
+        await message.answer("\u041e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0447\u0438\u0441\u043b\u043e \u043e\u0442 0 \u0434\u043e 100.")
+        return
+    settings = await get_settings()
+    discounts = settings.get("discounts", {})
+    discounts["percentage"] = pct
+    await update_settings({"discounts": discounts})
+    await state.clear()
+    await message.answer(f"\u2705 \u041f\u0440\u043e\u0446\u0435\u043d\u0442 \u0441\u043a\u0438\u0434\u043a\u0438 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d: {pct}%")
+
+
 @router.callback_query(F.data == "adm:stats")
 async def adm_stats(call: CallbackQuery) -> None:
     if not _is_admin(call.from_user.id if call.from_user else None):
@@ -227,7 +284,16 @@ async def adm_stats(call: CallbackQuery) -> None:
     if recent:
         text += "\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u043f\u043e\u043a\u0443\u043f\u043a\u0438:\n"
         for r in recent:
-            text += f"  {r.get('plan_code', '?')} | {r.get('payment_method', '?')} | {r.get('paid_at', '?')[:16]}\n"
+            paid_at_raw = r.get('paid_at', '')
+            if paid_at_raw:
+                try:
+                    dt = datetime.fromisoformat(paid_at_raw)
+                    paid_at_str = dt.strftime('%d.%m.%Y | %H:%M')
+                except Exception:
+                    paid_at_str = paid_at_raw[:16]
+            else:
+                paid_at_str = '?'
+            text += f"  {r.get('plan_code', '?')} | {r.get('payment_method', '?')} | {paid_at_str}\n"
 
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     kb = InlineKeyboardMarkup(inline_keyboard=[

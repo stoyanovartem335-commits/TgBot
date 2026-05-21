@@ -38,7 +38,15 @@ async def health_handler(request: web.Request) -> web.Response:
 
 async def plans_json_handler(request: web.Request) -> web.Response:
     plans = await get_plans_from_settings()
-    return web.json_response(plans)
+    settings = await get_settings()
+    discounts = settings.get("discounts", {})
+    return web.json_response({
+        "plans": plans,
+        "discount": {
+            "enabled": discounts.get("enabled", False),
+            "percentage": discounts.get("percentage", 0)
+        }
+    })
 
 
 async def site_json_handler(request: web.Request) -> web.Response:
