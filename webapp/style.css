@@ -301,29 +301,26 @@ img, video, canvas, svg {
 .carousel__viewport {
   position: relative;
   overflow: hidden;
-  height: 260px;
 }
 
 .carousel__track {
   display: flex;
-  height: 100%;
+  align-items: flex-start;
   transition: transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .carousel__item {
   flex: 0 0 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   cursor: pointer;
   user-select: none !important;
   -webkit-user-drag: none !important;
   overflow: hidden;
+  line-height: 0;
+  border-radius: var(--radius-lg);
 }
 .carousel__item img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  width: 100%;
+  height: auto;
   display: block;
   pointer-events: none;
   user-select: none !important;
@@ -908,7 +905,6 @@ img, video, canvas, svg {
   .plan-card__badge { left: 18px; right: auto; }
   .plan-card__price { align-self: flex-start; }
   .plan-card__price-wrap { align-items: flex-start; }
-  .carousel__viewport { height: 300px; }
   .carousel__arrow { width: 32px; height: 32px; font-size: 18px; }
   .carousel__arrow--prev { left: 2px; }
   .carousel__arrow--next { right: 2px; }
@@ -928,7 +924,6 @@ img, video, canvas, svg {
   .hero__title { font-size: 86px; }
   .hero__subtitle { font-size: 18px; }
   .features-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-  .carousel__viewport { height: 500px; }
   .carousel__arrow { width: 44px; height: 44px; font-size: 24px; }
   .carousel__arrow--prev { left: 12px; }
   .carousel__arrow--next { right: 12px; }
