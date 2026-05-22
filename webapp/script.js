@@ -12,19 +12,37 @@
     if (checkIsWebApp()) tg.expand();
   }
 
+  // Cache DOM elements
   var plansEl = document.getElementById('plansGrid');
   var buyBtn = document.getElementById('heroBuyBtn');
   var scrollBtn = document.getElementById('heroScrollBtn');
   var progressBar = document.getElementById('progressBar');
 
-  function updateProgress() {
-    var scrollTop = window.scrollY || document.documentElement.scrollTop;
-    var docHeight = document.documentElement.scrollHeight - window.innerHeight;
-    var progress = docHeight > 0 ? scrollTop / docHeight : 0;
-    if (progressBar) progressBar.style.transform = 'scaleX(' + progress + ')';
+  // Debounce helper
+  function debounce(func, wait) {
+    var timeout;
+    return function() {
+      var context = this, args = arguments;
+      clearTimeout(timeout);
+      timeout = setTimeout(function() { func.apply(context, args); }, wait);
+    };
   }
-  window.addEventListener('scroll', function () { requestAnimationFrame(updateProgress); }, { passive: true });
-  window.addEventListener('resize', function () { requestAnimationFrame(updateProgress); }, { passive: true });
+
+  // Optimized progress update with RAF
+  var rafId = null;
+  function updateProgress() {
+    if (rafId) return;
+    rafId = requestAnimationFrame(function() {
+      var scrollTop = window.scrollY || document.documentElement.scrollTop;
+      var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      var progress = docHeight > 0 ? scrollTop / docHeight : 0;
+      if (progressBar) progressBar.style.transform = 'scaleX(' + progress + ')';
+      rafId = null;
+    });
+  }
+  
+  window.addEventListener('scroll', updateProgress, { passive: true });
+  window.addEventListener('resize', debounce(updateProgress, 150), { passive: true });
   updateProgress();
 
   var observer = new IntersectionObserver(function (entries) {
@@ -92,7 +110,8 @@
 
   function renderPlans(plans) {
     if (!plansEl) return;
-    plansEl.innerHTML = '';
+    var fragment = document.createDocumentFragment();
+    
     plans.forEach(function (plan) {
       var wrapper = document.createElement('div');
       wrapper.className = 'plan-card';
@@ -191,8 +210,11 @@
         if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
       });
 
-      plansEl.appendChild(wrapper);
+      fragment.appendChild(wrapper);
     });
+
+    plansEl.innerHTML = '';
+    plansEl.appendChild(fragment);
 
     document.querySelectorAll('[data-animate]').forEach(function (el) {
       observer.observe(el);
@@ -273,7 +295,7 @@
     carouselIndex = 0;
 
     if (carouselTrack) {
-      carouselTrack.innerHTML = '';
+      var fragment = document.createDocumentFragment();
       images.forEach(function (src, i) {
         var item = document.createElement('div');
         item.className = 'carousel__item';
@@ -283,8 +305,10 @@
         img.alt = '\u0421\u043a\u0440\u0438\u043d\u0448\u043e\u0442 ' + (i + 1);
         img.setAttribute('loading', 'lazy');
         item.appendChild(img);
-        carouselTrack.appendChild(item);
+        fragment.appendChild(item);
       });
+      carouselTrack.innerHTML = '';
+      carouselTrack.appendChild(fragment);
     }
 
     buildDots();

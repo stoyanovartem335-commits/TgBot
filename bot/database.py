@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -11,7 +10,7 @@ _client: AsyncIOMotorClient | None = None
 _db: AsyncIOMotorDatabase | None = None
 _settings_cache: dict | None = None
 _settings_cache_until: datetime | None = None
-_settings_cache_ttl = timedelta(seconds=5)
+_settings_cache_ttl = timedelta(seconds=30)
 
 
 async def get_db() -> AsyncIOMotorDatabase:
@@ -165,7 +164,7 @@ async def get_settings() -> dict:
     global _settings_cache, _settings_cache_until
     now = datetime.now(timezone.utc)
     if _settings_cache is not None and _settings_cache_until is not None and now < _settings_cache_until:
-        return deepcopy(_settings_cache)
+        return _settings_cache
 
     db = await get_db()
     settings = await db.bot_settings.find_one({"_id": "global"})
@@ -173,9 +172,9 @@ async def get_settings() -> dict:
         await init_db()
         settings = await db.bot_settings.find_one({"_id": "global"})
     settings = settings or {}
-    _settings_cache = deepcopy(settings)
+    _settings_cache = settings
     _settings_cache_until = now + _settings_cache_ttl
-    return deepcopy(settings)
+    return settings
 
 
 async def update_settings(updates: dict) -> dict:
@@ -188,9 +187,9 @@ async def update_settings(updates: dict) -> dict:
         upsert=True,
     )
     settings = await db.bot_settings.find_one({"_id": "global"}) or {}
-    _settings_cache = deepcopy(settings)
+    _settings_cache = settings
     _settings_cache_until = datetime.now(timezone.utc) + _settings_cache_ttl
-    return deepcopy(settings)
+    return settings
 
 
 async def close_db() -> None:

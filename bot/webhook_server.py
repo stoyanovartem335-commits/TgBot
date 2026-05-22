@@ -81,10 +81,10 @@ def verify_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
     from urllib.parse import parse_qsl
     try:
         parsed = dict(parse_qsl(init_data))
-        if "hash" not in parsed:
+        received_hash = parsed.pop("hash", None)
+        if not received_hash:
             return None
         
-        received_hash = parsed.pop("hash")
         data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
         
         import hashlib
@@ -222,8 +222,9 @@ async def _performance_middleware(request: web.Request, handler):
     resp = await handler(request)
     if isinstance(resp, web.StreamResponse):
         resp.headers["ngrok-skip-browser-warning"] = "true"
-        if request.path.startswith("/static/"):
-            if any(request.path.endswith(ext) for ext in (".js", ".css", ".html")):
+        path = request.path
+        if path.startswith("/static/"):
+            if path.endswith((".js", ".css", ".html")):
                 resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             else:
                 resp.headers["Cache-Control"] = "public, max-age=31536000"
