@@ -293,8 +293,8 @@ img, video, canvas, svg {
 .carousel {
   position: relative;
   border-radius: var(--radius-lg);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+  background: transparent;
+  border: none;
   overflow: hidden;
 }
 
