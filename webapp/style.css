@@ -894,6 +894,9 @@ img, video, canvas, svg {
   opacity: 1;
   transform: translateY(0);
 }
+[hidden] {
+  display: none !important;
+}
 
 @media (max-width: 640px) {
   .hero { padding: 40px 0 32px; }
