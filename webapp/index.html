@@ -34,26 +34,26 @@
         <div class="feature-card" data-animate>
           <div class="feature-card__glow"></div>
           <div class="feature-card__icon">📊</div>
-          <h3 class="feature-card__title">Актуальные цены</h3>
-          <p class="feature-card__desc">Средние цены, товары и история сделок помогают быстро понять, где есть маржа.</p>
+          <h3 class="feature-card__title">Регулярное обновление цен</h3>
+          <p class="feature-card__desc">Регулярное обновление цен на все позиции товаров включая аксессуары и лимитированые автомобили.</p>
         </div>
         <div class="feature-card" data-animate>
           <div class="feature-card__glow"></div>
           <div class="feature-card__icon">🏪</div>
-          <h3 class="feature-card__title">Маркет лавок</h3>
-          <p class="feature-card__desc">Поиск предложений по серверам, лавкам и предметам без лишнего ручного перебора.</p>
+          <h3 class="feature-card__title">Торговая площадка</h3>
+          <p class="feature-card__desc">Ищите выгодные предложения о покупке/продаже любого товара среди пользователей скрипта на любом сервере Arizona RP.</p>
         </div>
         <div class="feature-card" data-animate>
           <div class="feature-card__glow"></div>
           <div class="feature-card__icon">🚗</div>
-          <h3 class="feature-card__title">Авто и редкие позиции</h3>
-          <p class="feature-card__desc">Отдельные таблицы и подсказки по машинам, аксессуарам и ликвидным позициям.</p>
+          <h3 class="feature-card__title">Средние цены</h3>
+          <p class="feature-card__desc">Просматривайте лог продаж с удобным графиком цен, чтобы отслеживать рынок всех предметов Arizona RP.</p>
         </div>
         <div class="feature-card" data-animate>
           <div class="feature-card__glow"></div>
           <div class="feature-card__icon">⚙️</div>
-          <h3 class="feature-card__title">Lua-помощник в игре</h3>
-          <p class="feature-card__desc">Анти-слив, история покупок и продаж, калькулятор и Telegram-уведомления по событиям.</p>
+          <h3 class="feature-card__title">Lua Script</h3>
+          <p class="feature-card__desc">Персональный помощник скрипт-помощник! Таблица цен, торговая площадка, калькулятор в трейде, Анти-Слив и не только прямо в игре!</p>
         </div>
       </div>
     </section>
@@ -75,14 +75,14 @@
           <span class="advantage-item__check">✅</span>
           <div>
             <strong>Личный токен</strong>
-            <p>Каждый пользователь получает уникальный токен доступа.</p>
+            <p>Персональный ключ доступа только для вас.</p>
           </div>
         </div>
         <div class="advantage-item" data-animate>
           <span class="advantage-item__check">✅</span>
           <div>
-            <strong>Всегда актуальные цены и товары</strong>
-            <p>Обновления помогают быстрее находить выгодные позиции и не покупать на эмоциях.</p>
+            <strong>Регулярное обновление цен</strong>
+            <p>Регулярное обновление цен а также пополнение списка товаров.</p>
           </div>
         </div>
         <div class="advantage-item" data-animate data-promo-only hidden>
@@ -102,8 +102,15 @@
         <div class="advantage-item" data-animate>
           <span class="advantage-item__check">✅</span>
           <div>
-            <strong>Инструкция в Telegram</strong>
-            <p>Подробные инструкции и обновления — в нашем Telegram-канале.</p>
+            <strong>Функция "Анти-Слив"</strong>
+            <p>Новая функция в нашем скрипте которая не позволит вам выставить или купить товар у другого игрока если вы ошиблись ценой.</p>
+          </div>
+        </div>
+        <div class="advantage-item" data-animate>
+          <span class="advantage-item__check">✅</span>
+          <div>
+            <strong>Гайд по перепродажам</strong>
+            <p>Персональный гайд в котором вам расскажут все о перепродажах. От бюджета для скупки до того как не дать себя обмануть в трейде.</p>
           </div>
         </div>
       </div>
@@ -133,6 +140,11 @@
     <button class="lightbox__nav lightbox__nav--next" id="lightboxNext" aria-label="Следующий">›</button>
     <img class="lightbox__image" id="lightboxImage" src="" alt="" />
     <div class="lightbox__counter" id="lightboxCounter"></div>
+    <div class="lightbox__zoom-controls" id="lightboxZoomControls">
+      <button class="lightbox__zoom-btn" id="zoomOutBtn" aria-label="Уменьшить">−</button>
+      <button class="lightbox__zoom-btn" id="zoomInBtn" aria-label="Увеличить">+</button>
+    </div>
+    <div class="lightbox__zoom-info" id="lightboxZoomInfo"></div>
   </div>
 
   <script src="/static/script.js?v=11"></script>
