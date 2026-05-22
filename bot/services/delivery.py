@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 PAYMENT_METHOD_LABEL = {
     "stars": "Telegram Stars",
     "triboote": "Triboote",
-    "requisites": "\u041f\u043e \u0440\u0435\u043a\u0432\u0438\u0437\u0438\u0442\u0430\u043c",
+    "requisites": "По реквизитам",
 }
 
 
@@ -41,12 +41,12 @@ async def deliver_purchase(
         log.error("Token generation failed for user %s: %s", user_id, exc)
         await bot.send_message(
             user_id,
-            "\u26a0\ufe0f \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u044b\u0434\u0430\u0442\u044c \u0442\u043e\u043a\u0435\u043d \u2014 \u043e\u0431\u0440\u0430\u0442\u0438\u0442\u0435\u0441\u044c \u0432 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0443.",
+            "⚠️ Не удалось выдать токен — обратитесь в поддержку.",
         )
         try:
             await bot.send_message(
                 ADMIN_ID,
-                f"\u26a0\ufe0f \u041e\u0448\u0438\u0431\u043a\u0430 \u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u0438 \u0442\u043e\u043a\u0435\u043d\u0430 \u0434\u043b\u044f \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f {user_id}: {exc}",
+                f"⚠️ Ошибка генерации токена для пользователя {user_id}: {exc}",
             )
         except Exception:
             pass
@@ -70,25 +70,25 @@ async def deliver_purchase(
     )
 
     expiry_line = (
-        "\u0421\u0440\u043e\u043a \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f: <b>\u0431\u0435\u0441\u0441\u0440\u043e\u0447\u043d\u044b\u0439</b>"
+        "Срок действия: <b>бессрочный</b>"
         if expires_at is None
-        else f"\u0414\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442 \u0434\u043e: <b>{expires_at.strftime('%d.%m.%Y %H:%M UTC')}</b>"
+        else f"Действует до: <b>{expires_at.strftime('%d.%m.%Y %H:%M UTC')}</b>"
     )
 
     text = (
-        "\u2705 <b>\u041e\u043f\u043b\u0430\u0442\u0430 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0430</b>\n\n"
-        f"\u0422\u0430\u0440\u0438\u0444: <b>{plan_label}</b>\n"
-        f"\u0421\u043f\u043e\u0441\u043e\u0431 \u043e\u043f\u043b\u0430\u0442\u044b: <b>{method_label}</b>\n"
+        "✅ <b>Оплата подтверждена</b>\n\n"
+        f"Тариф: <b>{plan_label}</b>\n"
+        f"Способ оплаты: <b>{method_label}</b>\n"
         f"{expiry_line}\n\n"
-        "\U0001f511 <b>\u0412\u0430\u0448 \u0442\u043e\u043a\u0435\u043d:</b>\n"
+        "🔑 <b>Ваш токен:</b>\n"
         f"<code>{token}</code>\n\n"
     )
     if friend_token:
         text += (
-            "\U0001f381 <b>\u0422\u043e\u043a\u0435\u043d \u00ab\u0434\u043b\u044f \u0434\u0440\u0443\u0433\u0430\u00bb</b> (\u0442\u043e\u0442 \u0436\u0435 \u0441\u0440\u043e\u043a):\n"
+            "🎁 <b>Токен «для друга»</b> (тот же срок):\n"
             f"<code>{friend_token}</code>\n\n"
         )
-    text += f"\U0001f4d6 \u0412\u0441\u0435 \u0438\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438 \u2014 \u0432 \u043a\u0430\u043d\u0430\u043b\u0435:\n{TG_CHANNEL_URL}"
+    text += f"📖 Все инструкции — в канале:\n{TG_CHANNEL_URL}"
 
     await bot.send_message(
         user_id,
@@ -103,13 +103,13 @@ async def deliver_purchase(
             await bot.send_document(
                 user_id,
                 FSInputFile(zip_path, filename="Price_by_KALYVAN.zip"),
-                caption="\U0001f4e6 \u0412\u0430\u0448 \u0430\u0440\u0445\u0438\u0432 \u0441\u043e \u0441\u043a\u0440\u0438\u043f\u0442\u043e\u043c. \u0420\u0430\u0441\u043f\u0430\u043a\u0443\u0439\u0442\u0435 \u0438 \u0441\u043b\u0435\u0434\u0443\u0439\u0442\u0435 \u0438\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438 \u0432 \u043a\u0430\u043d\u0430\u043b\u0435.",
+                caption="📦 Ваш архив со скриптом. Распакуйте и следуйте инструкциям в канале.",
             )
         except Exception as exc:
             log.error("Failed to send ZIP to user %s: %s", user_id, exc)
             await bot.send_message(
                 user_id,
-                "\u26a0\ufe0f \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0430\u0440\u0445\u0438\u0432. \u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 \u0432 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0443.",
+                "⚠️ Не удалось отправить архив. Напишите в поддержку.",
             )
     else:
         log.warning("ZIP file not found at %s", zip_path)

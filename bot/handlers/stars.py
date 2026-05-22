@@ -12,6 +12,9 @@ from ..services.settings_service import price_with_active_discount
 log = logging.getLogger(__name__)
 router = Router(name="stars")
 
+PLAN_LABELS = {"1m": "1 месяц", "2m": "2 месяца", "3m": "3 месяца", "6m": "6 месяцев", "forever": "Forever"}
+PLAN_DAYS = {"1m": 30, "2m": 60, "3m": 90, "6m": 180, "forever": None}
+
 
 @router.callback_query(F.data.startswith("pay:stars:"))
 async def on_pay_stars(call: CallbackQuery) -> None:
@@ -22,18 +25,17 @@ async def on_pay_stars(call: CallbackQuery) -> None:
     settings = await get_settings()
     prices_stars = settings.get("prices_stars", {})
 
-    plan_labels = {"1m": "1 \u043c\u0435\u0441\u044f\u0446", "2m": "2 \u043c\u0435\u0441\u044f\u0446\u0430", "3m": "3 \u043c\u0435\u0441\u044f\u0446\u0430", "6m": "6 \u043c\u0435\u0441\u044f\u0446\u0435\u0432", "forever": "Forever"}
     stars_price = await price_with_active_discount(prices_stars.get(plan_code, 0))
-    label = plan_labels.get(plan_code, plan_code)
+    label = PLAN_LABELS.get(plan_code, plan_code)
 
     if stars_price <= 0:
-        await call.answer("\u0422\u0430\u0440\u0438\u0444 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d", show_alert=True)
+        await call.answer("Тариф не найден", show_alert=True)
         return
 
     await call.answer()
     await call.message.answer_invoice(
-        title=f"\u0422\u0430\u0431\u043b\u0438\u0446\u0430 \u043f\u0435\u0440\u0435\u043f\u0440\u043e\u0434\u0430\u0436 \u2014 {label}",
-        description=f"\u0414\u043e\u0441\u0442\u0443\u043f \u043a \u0422\u0430\u0431\u043b\u0438\u0446\u0435 \u043f\u0435\u0440\u0435\u043f\u0440\u043e\u0434\u0430\u0436, \u0442\u0430\u0440\u0438\u0444 \u00ab{label}\u00bb.",
+        title=f"Таблица перепродаж — {label}",
+        description=f"Доступ к Таблице перепродаж, тариф «{label}».",
         payload=f"stars:{plan_code}",
         currency="XTR",
         prices=[LabeledPrice(label=label, amount=stars_price)],
@@ -57,15 +59,12 @@ async def on_successful_payment(message: Message) -> None:
         return
     plan_code = payload.split(":", 1)[1]
 
-    plan_labels = {"1m": "1 \u043c\u0435\u0441\u044f\u0446", "2m": "2 \u043c\u0435\u0441\u044f\u0446\u0430", "3m": "3 \u043c\u0435\u0441\u044f\u0446\u0430", "6m": "6 \u043c\u0435\u0441\u044f\u0446\u0435\u0432", "forever": "Forever"}
-    plan_days = {"1m": 30, "2m": 60, "3m": 90, "6m": 180, "forever": None}
-
     await deliver_purchase(
         message.bot,
         user_id=message.from_user.id,
         username=message.from_user.username,
         plan_code=plan_code,
-        plan_label=plan_labels.get(plan_code, plan_code),
-        days=plan_days.get(plan_code),
+        plan_label=PLAN_LABELS.get(plan_code, plan_code),
+        days=PLAN_DAYS.get(plan_code),
         payment_method="stars",
     )

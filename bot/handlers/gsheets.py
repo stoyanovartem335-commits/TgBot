@@ -29,8 +29,8 @@ async def on_request(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.set_state(GSheetsFlow.waiting_email)
     await call.message.answer(
-        "\U0001f4cb <b>\u0417\u0430\u043f\u0440\u043e\u0441 Google Sheets</b>\n\n"
-        "\u041e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0441\u0432\u043e\u0439 Gmail \u043e\u0434\u043d\u0438\u043c \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435\u043c \u2014 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440 \u043e\u0442\u043a\u0440\u043e\u0435\u0442 \u0434\u043e\u0441\u0442\u0443\u043f \u0432 \u0442\u0435\u0447\u0435\u043d\u0438\u0435 \u0441\u0443\u0442\u043e\u043a.",
+        "📋 <b>Запрос Google Sheets</b>\n\n"
+        "Отправьте свой Gmail одним сообщением — администратор откроет доступ в течение суток.",
         reply_markup=cancel_email_kb(),
     )
 
@@ -40,9 +40,9 @@ async def on_cancel(call: CallbackQuery, state: FSMContext) -> None:
     if call.message is None:
         return
     await state.clear()
-    await call.answer("\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u043e")
+    await call.answer("Отменено")
     await call.message.edit_reply_markup(reply_markup=None)
-    await call.message.answer("\u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0442\u043c\u0435\u043d\u0435\u043d\u0430.")
+    await call.message.answer("Заявка отменена.")
 
 
 @router.message(GSheetsFlow.waiting_email, F.text)
@@ -51,7 +51,7 @@ async def on_email(message: Message, state: FSMContext) -> None:
         return
     email = (message.text or "").strip()
     if not _EMAIL_RE.match(email) or len(email) > 254:
-        await message.answer("\u042d\u0442\u043e \u043d\u0435 \u043f\u043e\u0445\u043e\u0436\u0435 \u043d\u0430 email. \u041f\u0440\u0438\u0448\u043b\u0438\u0442\u0435 \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435 <code>user@gmail.com</code>.")
+        await message.answer("Это не похоже на email. Пришлите в формате <code>user@gmail.com</code>.")
         return
 
     await state.clear()
@@ -63,17 +63,17 @@ async def on_email(message: Message, state: FSMContext) -> None:
         token=token,
     )
 
-    await message.answer(f"\u2705 \u0417\u0430\u044f\u0432\u043a\u0430 \u043f\u0440\u0438\u043d\u044f\u0442\u0430.\n\nEmail: <code>{email}</code>\n\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440 \u043e\u0442\u043a\u0440\u043e\u0435\u0442 \u0434\u043e\u0441\u0442\u0443\u043f \u0432 \u0442\u0435\u0447\u0435\u043d\u0438\u0435 \u0441\u0443\u0442\u043e\u043a.")
+    await message.answer(f"✅ Заявка принята.\n\nEmail: <code>{email}</code>\nАдминистратор откроет доступ в течение суток.")
 
     uname = message.from_user.username
     user_ref = f"@{uname}" if uname else f"id={message.from_user.id}"
     admin_text = (
-        "\U0001f4cb <b>\u041d\u043e\u0432\u0430\u044f \u0437\u0430\u044f\u0432\u043a\u0430 \u043d\u0430 Google Sheets</b>\n\n"
-        f"\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c: {user_ref}\n"
-        f"\u0418\u043c\u044f: {message.from_user.full_name}\n"
+        "📋 <b>Новая заявка на Google Sheets</b>\n\n"
+        f"Пользователь: {user_ref}\n"
+        f"Имя: {message.from_user.full_name}\n"
         f"Email: <code>{email}</code>\n"
-        f"\u0422\u043e\u043a\u0435\u043d: <code>{token or '\u2014'}</code>\n"
-        f"\u0417\u0430\u044f\u0432\u043a\u0430 #{req_id}"
+        f"Токен: <code>{token or '—'}</code>\n"
+        f"Заявка #{req_id}"
     )
     try:
         await message.bot.send_message(ADMIN_ID, admin_text)
