@@ -292,38 +292,37 @@ img, video, canvas, svg {
 
 .carousel {
   position: relative;
-  height: 260px;
-  overflow: hidden;
   border-radius: var(--radius-lg);
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
+  overflow: hidden;
+}
+
+.carousel__viewport {
+  position: relative;
+  overflow: hidden;
+  height: 260px;
 }
 
 .carousel__track {
   display: flex;
-  width: 100%;
-  flex: 1;
+  height: 100%;
   transition: transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .carousel__item {
   flex: 0 0 100%;
-  width: 100%;
-  height: 100%;
-  position: relative;
-  cursor: pointer;
-  user-select: none !important;
-  -webkit-user-drag: none !important;
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
   overflow: hidden;
 }
 .carousel__item img {
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   display: block;
   pointer-events: none;
@@ -332,13 +331,10 @@ img, video, canvas, svg {
 }
 
 .carousel__dots {
-  position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   justify-content: center;
   gap: 8px;
+  padding: 10px 0 14px;
 }
 
 .carousel__dot {
@@ -382,7 +378,6 @@ img, video, canvas, svg {
   backdrop-filter: blur(8px);
   line-height: 1;
   padding: 0;
-  touch-action: none;
 }
 .carousel__arrow:hover {
   border-color: var(--border-accent);
@@ -434,8 +429,8 @@ img, video, canvas, svg {
   user-select: none;
   -webkit-user-drag: none;
   touch-action: none;
-  transition: transform 0.2s ease;
   cursor: grab;
+  transform-origin: center center;
 }
 .lightbox__image.grabbing {
   cursor: grabbing;
@@ -455,25 +450,28 @@ img, video, canvas, svg {
 .lightbox__image.slide-out-left {
   animation: slideOutLeft 0.25s ease forwards;
 }
+.lightbox__image.animated-transform {
+  transition: transform 0.2s ease;
+}
 
 .lightbox__zoom-controls {
   position: absolute;
-  bottom: 90px;
+  bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2;
+  z-index: 3;
   display: flex;
-  gap: 8px;
-  background: rgba(255,255,255,0.05);
+  gap: 10px;
+  background: rgba(5,5,5,0.8);
   border: 1px solid var(--border-subtle);
   border-radius: 100px;
-  padding: 6px 8px;
-  backdrop-filter: blur(10px);
+  padding: 8px 14px;
+  backdrop-filter: blur(12px);
 }
 
 .lightbox__zoom-btn {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: none;
   background: rgba(0,255,136,0.15);
@@ -482,16 +480,15 @@ img, video, canvas, svg {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
   transition: all 0.2s ease;
   padding: 0;
   line-height: 1;
-  touch-action: none;
 }
 
 .lightbox__zoom-btn:hover {
-  background: rgba(0,255,136,0.25);
+  background: rgba(0,255,136,0.3);
   transform: scale(1.1);
   box-shadow: 0 0 12px rgba(0,255,136,0.2);
 }
@@ -504,23 +501,24 @@ img, video, canvas, svg {
   background: rgba(255,255,255,0.05);
   color: var(--text-muted);
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.4;
+  transform: none;
 }
 
 .lightbox__zoom-info {
   position: absolute;
-  top: 80px;
+  top: 72px;
   right: 20px;
-  z-index: 2;
+  z-index: 3;
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-muted);
-  padding: 6px 12px;
+  padding: 4px 12px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.05);
+  background: rgba(5,5,5,0.8);
   border: 1px solid var(--border-subtle);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
 }
 
 @keyframes zoomIn {
@@ -905,7 +903,10 @@ img, video, canvas, svg {
   .plan-card__badge { left: 18px; right: auto; }
   .plan-card__price { align-self: flex-start; }
   .plan-card__price-wrap { align-items: flex-start; }
-  .carousel { height: 300px; overflow: hidden; -webkit-mask-image: none; mask-image: none; }
+  .carousel__viewport { height: 300px; }
+  .carousel__arrow { width: 32px; height: 32px; font-size: 18px; }
+  .carousel__arrow--prev { left: 2px; }
+  .carousel__arrow--next { right: 2px; }
   .lightbox__nav { width: 40px; height: 40px; font-size: 20px; }
   .lightbox__nav--prev { left: 12px; }
   .lightbox__nav--next { right: 12px; }
@@ -922,8 +923,7 @@ img, video, canvas, svg {
   .hero__title { font-size: 86px; }
   .hero__subtitle { font-size: 18px; }
   .features-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-  .carousel { height: 500px; }
-  .carousel__item { border-radius: var(--radius-xl); }
+  .carousel__viewport { height: 500px; }
   .carousel__arrow { width: 44px; height: 44px; font-size: 24px; }
   .carousel__arrow--prev { left: 12px; }
   .carousel__arrow--next { right: 12px; }
@@ -933,10 +933,6 @@ img, video, canvas, svg {
   .section__title { font-size: 40px; }
 }
 
-@media (min-width: 1240px) {
-  .carousel__arrow--prev { left: -24px; }
-  .carousel__arrow--next { right: -24px; }
-}
 
 .browser-footer {
   text-align: center;

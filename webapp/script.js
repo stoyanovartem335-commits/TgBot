@@ -106,12 +106,7 @@
       if (plan.highlighted) {
         var badge = document.createElement('div');
         badge.className = 'plan-card__badge';
-        // Check if this is a 3-month plan and update badge text
-        if (plan.label && plan.label.includes('3') && plan.label.includes('месяц')) {
-          badge.textContent = '\u26a1 Доступ на 90 дней';
-        } else {
-          badge.textContent = '\u2b50 Популярный';
-        }
+        badge.textContent = '\u2b50 Популярный';
         inner.appendChild(badge);
       }
 
@@ -132,7 +127,11 @@
       if (plan.description) {
         var desc = document.createElement('div');
         desc.className = 'plan-card__desc';
-        desc.textContent = plan.description;
+        var descText = plan.description;
+        if (plan.highlighted) {
+          descText = 'Доступ на 90 дней';
+        }
+        desc.textContent = descText;
         info.appendChild(desc);
       }
 
@@ -443,6 +442,7 @@
     lightboxImage.alt = '\u0421\u043a\u0440\u0438\u043d\u0448\u043e\u0442 ' + (currentImageIndex + 1);
     lightboxCounter.textContent = (currentImageIndex + 1) + ' / ' + totalSlides;
     lightboxImage.className = 'lightbox__image zoom-in';
+    lightboxImage.style.transform = '';
     updateZoomDisplay();
     updateZoomButtons();
     lightbox.classList.add('active');
@@ -451,53 +451,70 @@
 
   function updateZoomDisplay() {
     var zoomPercent = Math.round(currentZoom * 100);
-    lightboxZoomInfo.textContent = zoomPercent + '%';
+    if (lightboxZoomInfo) lightboxZoomInfo.textContent = zoomPercent + '%';
   }
 
   function updateZoomButtons() {
-    zoomInBtn.disabled = currentZoom >= maxZoom;
-    zoomOutBtn.disabled = currentZoom <= minZoom;
+    if (zoomInBtn) zoomInBtn.disabled = currentZoom >= maxZoom;
+    if (zoomOutBtn) zoomOutBtn.disabled = currentZoom <= minZoom;
   }
 
   function resetZoom() {
     currentZoom = 1;
     currentX = 0;
     currentY = 0;
-    updateLightboxImageTransform();
+    if (lightboxImage) {
+      lightboxImage.style.transform = '';
+      lightboxImage.classList.remove('animated-transform');
+    }
     updateZoomDisplay();
     updateZoomButtons();
   }
 
   function updateLightboxImageTransform() {
-    var maxTranslateX = (lightboxImage.offsetWidth * currentZoom - lightboxImage.offsetWidth) / 2;
-    var maxTranslateY = (lightboxImage.offsetHeight * currentZoom - lightboxImage.offsetHeight) / 2;
+    var viewW = window.innerWidth;
+    var viewH = window.innerHeight;
+    var imgW = lightboxImage.offsetWidth;
+    var imgH = lightboxImage.offsetHeight;
     
-    currentX = Math.max(-maxTranslateX, Math.min(maxTranslateX, currentX));
-    currentY = Math.max(-maxTranslateY, Math.min(maxTranslateY, currentY));
+    var visualW = imgW * currentZoom;
+    var visualH = imgH * currentZoom;
     
-    lightboxImage.style.transform = 'scale(' + currentZoom + ') translate(' + (currentX / currentZoom) + 'px, ' + (currentY / currentZoom) + 'px)';
+    var maxX = Math.max(0, (visualW - viewW) / 2);
+    var maxY = Math.max(0, (visualH - viewH) / 2);
+    
+    currentX = Math.max(-maxX, Math.min(maxX, currentX));
+    currentY = Math.max(-maxY, Math.min(maxY, currentY));
+    
+    lightboxImage.style.transform = 'translate(' + currentX + 'px, ' + currentY + 'px) scale(' + currentZoom + ')';
   }
 
   function zoomIn() {
-    if (currentZoom < maxZoom) {
-      currentZoom = Math.min(currentZoom + zoomStep, maxZoom);
-      updateLightboxImageTransform();
-      updateZoomDisplay();
-      updateZoomButtons();
-    }
+    if (currentZoom >= maxZoom) return;
+    currentZoom = Math.min(currentZoom + zoomStep, maxZoom);
+    lightboxImage.classList.add('animated-transform');
+    updateLightboxImageTransform();
+    updateZoomDisplay();
+    updateZoomButtons();
+    setTimeout(function () {
+      lightboxImage.classList.remove('animated-transform');
+    }, 250);
   }
 
   function zoomOut() {
-    if (currentZoom > minZoom) {
-      currentZoom = Math.max(currentZoom - zoomStep, minZoom);
-      if (currentZoom === minZoom) {
-        currentX = 0;
-        currentY = 0;
-      }
-      updateLightboxImageTransform();
-      updateZoomDisplay();
-      updateZoomButtons();
+    if (currentZoom <= minZoom) return;
+    currentZoom = Math.max(currentZoom - zoomStep, minZoom);
+    if (currentZoom === minZoom) {
+      currentX = 0;
+      currentY = 0;
     }
+    lightboxImage.classList.add('animated-transform');
+    updateLightboxImageTransform();
+    updateZoomDisplay();
+    updateZoomButtons();
+    setTimeout(function () {
+      lightboxImage.classList.remove('animated-transform');
+    }, 250);
   }
 
   function closeLightbox() {
