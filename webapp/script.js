@@ -53,7 +53,7 @@
     });
   }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
 
-  document.querySelectorAll('[data-animate]').forEach(function (el) {
+  document.querySelectorAll('[data-animate]:not([data-promo-only])').forEach(function (el) {
     observer.observe(el);
   });
 
