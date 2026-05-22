@@ -447,6 +447,12 @@
     updateZoomButtons();
     lightbox.classList.add('active');
     document.body.style.overflow = 'hidden';
+    // Remove animation class after it completes so inline transform works for zoom
+    setTimeout(function () {
+      if (isLightboxOpen && lightboxImage) {
+        lightboxImage.className = 'lightbox__image';
+      }
+    }, 450);
   }
 
   function updateZoomDisplay() {
@@ -472,6 +478,9 @@
   }
 
   function updateLightboxImageTransform() {
+    // Remove animation classes that would override inline style.transform
+    lightboxImage.classList.remove('zoom-in', 'slide-in-right', 'slide-in-left', 'slide-out-right', 'slide-out-left');
+    
     var viewW = window.innerWidth;
     var viewH = window.innerHeight;
     var imgW = lightboxImage.offsetWidth;
@@ -555,6 +564,7 @@
       updateZoomButtons();
 
       setTimeout(function () {
+        lightboxImage.className = 'lightbox__image';
         isAnimating = false;
       }, 350);
     }, 200);

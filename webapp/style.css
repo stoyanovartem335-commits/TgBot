@@ -461,21 +461,22 @@ img, video, canvas, svg {
   transform: translateX(-50%);
   z-index: 3;
   display: flex;
-  gap: 10px;
-  background: rgba(5,5,5,0.8);
-  border: 1px solid var(--border-subtle);
+  gap: 8px;
+  background: rgba(15, 15, 15, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 100px;
-  padding: 8px 14px;
+  padding: 6px;
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .lightbox__zoom-btn {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: none;
-  background: rgba(0,255,136,0.15);
-  color: var(--green-primary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -488,9 +489,10 @@ img, video, canvas, svg {
 }
 
 .lightbox__zoom-btn:hover {
-  background: rgba(0,255,136,0.3);
-  transform: scale(1.1);
-  box-shadow: 0 0 12px rgba(0,255,136,0.2);
+  border-color: var(--border-accent);
+  color: var(--green-primary);
+  background: rgba(15, 15, 15, 0.85);
+  box-shadow: 0 0 15px rgba(0,255,136,0.3);
 }
 
 .lightbox__zoom-btn:active {
@@ -498,10 +500,12 @@ img, video, canvas, svg {
 }
 
 .lightbox__zoom-btn:disabled {
-  background: rgba(255,255,255,0.05);
+  border-color: rgba(255, 255, 255, 0.05);
+  background: rgba(255,255,255,0.03);
   color: var(--text-muted);
   cursor: not-allowed;
-  opacity: 0.4;
+  opacity: 0.35;
+  box-shadow: none;
   transform: none;
 }
 
@@ -516,9 +520,10 @@ img, video, canvas, svg {
   color: var(--text-muted);
   padding: 4px 12px;
   border-radius: 6px;
-  background: rgba(5,5,5,0.8);
-  border: 1px solid var(--border-subtle);
+  background: rgba(15, 15, 15, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 @keyframes zoomIn {
