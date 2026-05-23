@@ -50,7 +50,8 @@ API_ADMIN_TOKEN: str = _req("API_ADMIN_TOKEN")
 
 WEBAPP_URL: str = _req("WEBAPP_URL").rstrip("/")
 WEB_HOST: str = os.getenv("WEB_HOST", "0.0.0.0")
-WEB_PORT: int = _int("WEB_PORT", 8080)
+# Render.com injects $PORT; fall back to $WEB_PORT, then 8080
+WEB_PORT: int = int(os.getenv("PORT") or os.getenv("WEB_PORT") or 8080)
 
 REQUISITES_TEXT: str = os.getenv("REQUISITES_TEXT", "")
 REQUISITES_CARD: str = os.getenv("REQUISITES_CARD", "")

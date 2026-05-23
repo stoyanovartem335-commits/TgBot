@@ -4,7 +4,10 @@ import hmac
 import json
 import logging
 import os
+import time
 from hashlib import sha256
+
+_START_TIME = time.monotonic()
 
 from aiogram import Bot
 from aiohttp import web
@@ -33,10 +36,13 @@ async def index_handler(request: web.Request) -> web.StreamResponse:
 
 
 async def health_handler(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "service": "telegram-bot"})
+    uptime = int(time.monotonic() - _START_TIME)
+    log.info("Health check from %s", request.remote)
+    return web.json_response({"status": "ok", "uptime": uptime, "service": "telegram-bot"})
 
 
 async def nosleep_handler(request: web.Request) -> web.Response:
+    log.info("Ping from %s", request.remote)
     return web.Response(text="OK")
 
 
@@ -236,12 +242,34 @@ async def _performance_middleware(request: web.Request, handler):
 
 
 def build_app(bot: Bot) -> web.Application:
-    app = web.Application(middlewares=[_performance_middleware])
+    async def _ping(request: web.Request) -> web.Response:
+        log.info("Ping %s from %s", request.path, request.remote)
+        return web.Response(text="OK")
+
+    async def _api_health(request: web.Request) -> web.Response:
+        uptime = int(time.monotonic() - _START_TIME)
+        log.info("API health check from %s", request.remote)
+        return web.json_response({"status": "ok", "uptime": uptime})
+
+    # Middleware that short-circuits ping paths before any other middleware runs
+    _PING_PATHS = {"/api/health", "/api/ping", "/api/nosleep", "/health"}
+
+    @web.middleware
+    async def _ping_middleware(request: web.Request, handler):
+        if request.path in _PING_PATHS:
+            if request.path == "/api/health":
+                return await _api_health(request)
+            return await _ping(request)
+        return await handler(request)
+
+    app = web.Application(middlewares=[_ping_middleware, _performance_middleware])
     app["bot"] = bot
     app.router.add_get("/", index_handler)
     app.router.add_get("/index.html", index_handler)
     app.router.add_get("/health", health_handler)
-    app.router.add_get("/api/nosleep", nosleep_handler)
+    app.router.add_get("/api/health", _api_health)
+    app.router.add_get("/api/ping", _ping)
+    app.router.add_get("/api/nosleep", _ping)
     app.router.add_get("/api/plans", plans_json_handler)
     app.router.add_get("/api/site", site_json_handler)
     app.router.add_get("/api/images", images_json_handler)
@@ -282,5 +310,5 @@ async def start_web_server(bot: Bot) -> web.AppRunner:
     await runner.setup()
     site = web.TCPSite(runner, host=WEB_HOST, port=WEB_PORT)
     await site.start()
-    log.info("Web server listening on http://%s:%s", WEB_HOST, WEB_PORT)
+    log.info("Web server listening on http://%s:%s (PORT env=%s)", WEB_HOST, WEB_PORT, os.getenv("PORT", "not set"))
     return runner

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -22,8 +23,18 @@ def setup_logging() -> None:
     )
 
 
+def _handle_asyncio_exception(loop, context):
+    msg = context.get("exception", context["message"])
+    logging.getLogger(__name__).error("Unhandled asyncio exception: %s", msg)
+
+
 async def main() -> None:
     setup_logging()
+    log = logging.getLogger(__name__)
+
+    loop = asyncio.get_event_loop()
+    loop.set_exception_handler(_handle_asyncio_exception)
+
     await init_db()
 
     bot = Bot(
@@ -43,6 +54,7 @@ async def main() -> None:
     )
 
     runner = await start_web_server(bot)
+    log.info("Service started. Bot polling beginning.")
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
@@ -55,4 +67,10 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    except Exception as exc:
+        logging.getLogger(__name__).critical("Fatal startup error: %s", exc, exc_info=True)
+        sys.exit(1)
