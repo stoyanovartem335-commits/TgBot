@@ -36,6 +36,10 @@ async def health_handler(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "service": "telegram-bot"})
 
 
+async def nosleep_handler(request: web.Request) -> web.Response:
+    return web.Response(text="OK")
+
+
 async def plans_json_handler(request: web.Request) -> web.Response:
     plans = await get_plans_from_settings()
     settings = await get_settings()
@@ -237,6 +241,7 @@ def build_app(bot: Bot) -> web.Application:
     app.router.add_get("/", index_handler)
     app.router.add_get("/index.html", index_handler)
     app.router.add_get("/health", health_handler)
+    app.router.add_get("/api/nosleep", nosleep_handler)
     app.router.add_get("/api/plans", plans_json_handler)
     app.router.add_get("/api/site", site_json_handler)
     app.router.add_get("/api/images", images_json_handler)
