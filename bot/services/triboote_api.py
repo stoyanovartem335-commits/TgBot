@@ -45,7 +45,7 @@ async def create_payment(
 ) -> TribootePayment:
     if not TRIBOOTE_API_URL or not TRIBOOTE_API_KEY:
         raise TribooteError(
-            "Triboote API \u043d\u0435 \u0441\u043a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0438\u0440\u043e\u0432\u0430\u043d (TRIBOOTE_API_URL / TRIBOOTE_API_KEY)"
+            "Triboote API не сконфигурирован (TRIBOOTE_API_URL / TRIBOOTE_API_KEY)"
         )
 
     payload = {
@@ -71,14 +71,14 @@ async def create_payment(
         text = await resp.text()
         if resp.status >= 400:
             log.error("Triboote error: %s %s", resp.status, text)
-            raise TribooteError(f"Triboote \u0432\u0435\u0440\u043d\u0443\u043b {resp.status}: {text[:200]}")
+            raise TribooteError(f"Triboote вернул {resp.status}: {text[:200]}")
         try:
             data = await resp.json(content_type=None)
         except Exception as exc:
-            raise TribooteError(f"\u041d\u0435\u0432\u0430\u043b\u0438\u0434\u043d\u044b\u0439 \u043e\u0442\u0432\u0435\u0442 Triboote: {exc}") from exc
+            raise TribooteError(f"Невалидный ответ Triboote: {exc}") from exc
 
     pay_url = data.get("pay_url") or data.get("payment_url") or data.get("url")
     ext_id = data.get("id") or data.get("payment_id") or payment_id
     if not pay_url:
-        raise TribooteError("Triboote \u043d\u0435 \u0432\u0435\u0440\u043d\u0443\u043b \u0441\u0441\u044b\u043b\u043a\u0443 \u043d\u0430 \u043e\u043f\u043b\u0430\u0442\u0443")
+        raise TribooteError("Triboote не вернул ссылку на оплату")
     return TribootePayment(payment_id=str(ext_id), pay_url=str(pay_url))

@@ -31,8 +31,8 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
             price_rub = plan["price_rub"]
             price_stars = plan["price_stars"]
             if discount_enabled and discount_pct > 0:
-                price_rub = await apply_discount(price_rub, discount_pct)
-                price_stars = await apply_discount(price_stars, discount_pct)
+                price_rub = apply_discount(price_rub, discount_pct)
+                price_stars = apply_discount(price_stars, discount_pct)
 
             from ..keyboards import payment_methods_kb
             text = (

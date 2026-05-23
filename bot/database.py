@@ -45,14 +45,14 @@ async def init_db() -> None:
             "prices_stars": {"1m": 150, "2m": 280, "3m": 400, "6m": 750, "forever": 2500},
             "highlighted_tariff": "3m",
             "tariff_descriptions": {
-                "1m": "\u0411\u0430\u0437\u043e\u0432\u044b\u0439 \u0434\u043e\u0441\u0442\u0443\u043f \u043d\u0430 30 \u0434\u043d\u0435\u0439",
-                "2m": "\u0414\u043e\u0441\u0442\u0443\u043f \u043d\u0430 60 \u0434\u043d\u0435\u0439",
-                "3m": "\u0421\u0430\u043c\u044b\u0439 \u043f\u043e\u043f\u0443\u043b\u044f\u0440\u043d\u044b\u0439 \u0432\u044b\u0431\u043e\u0440",
-                "6m": "\u0414\u043e\u0441\u0442\u0443\u043f \u043d\u0430 180 \u0434\u043d\u0435\u0439",
-                "forever": "\u0411\u0435\u0441\u0441\u0440\u043e\u0447\u043d\u044b\u0439 \u0434\u043e\u0441\u0442\u0443\u043f"
+                "1m": "Базовый доступ на 30 дней",
+                "2m": "Доступ на 60 дней",
+                "3m": "Самый популярный выбор",
+                "6m": "Доступ на 180 дней",
+                "forever": "Бессрочный доступ"
             },
             "discounts": {"enabled": False, "percentage": 10, "duration_days": 30},
-            "promotion": {"enabled": False, "text": "\u041a\u0443\u043f\u0438 1 \u0442\u043e\u043a\u0435\u043d \u2192 \u043f\u043e\u043b\u0443\u0447\u0438 1 \u0442\u043e\u043a\u0435\u043d \u0434\u043b\u044f \u0434\u0440\u0443\u0433\u0430"},
+            "promotion": {"enabled": False, "text": "Купи 1 токен → получи 1 токен для друга"},
             "banner_text": "",
             "marketing_text": "",
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -207,9 +207,7 @@ async def count_users() -> int:
     return await db.bot_purchases.count_documents({})
 
 
-async def get_total_purchases() -> int:
-    db = await get_db()
-    return await db.bot_purchases.count_documents({})
+get_total_purchases = count_users
 
 
 async def get_recent_purchases(limit: int = 10) -> list:

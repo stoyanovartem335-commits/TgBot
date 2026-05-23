@@ -85,6 +85,6 @@ def plans_for_webapp(plans_list: list) -> list[dict]:
 
 def site_config_for_webapp() -> dict:
     return {
-        "title": "\u0422\u0430\u0431\u043b\u0438\u0446\u0430 \u041a\u0430\u043b\u044b\u0432\u0430\u043d\u0430",
+        "title": "Таблица Калывана",
         "tg_channel_url": TG_CHANNEL_URL,
     }

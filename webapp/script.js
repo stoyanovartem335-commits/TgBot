@@ -12,13 +12,11 @@
     if (checkIsWebApp()) tg.expand();
   }
 
-  // Cache DOM elements
   var plansEl = document.getElementById('plansGrid');
   var buyBtn = document.getElementById('heroBuyBtn');
   var scrollBtn = document.getElementById('heroScrollBtn');
   var progressBar = document.getElementById('progressBar');
 
-  // Debounce helper
   function debounce(func, wait) {
     var timeout;
     return function() {
@@ -28,7 +26,6 @@
     };
   }
 
-  // Optimized progress update with RAF
   var rafId = null;
   function updateProgress() {
     if (rafId) return;
@@ -125,7 +122,7 @@
       if (plan.highlighted) {
         var badge = document.createElement('div');
         badge.className = 'plan-card__badge';
-        badge.textContent = '\u2b50 Популярный';
+        badge.textContent = '⭐ Популярный';
         inner.appendChild(badge);
       }
 
@@ -164,17 +161,17 @@
         var discountedRub = Math.round(plan.price_rub * (100 - discountPct) / 100);
         var currentPriceRub = document.createElement('span');
         currentPriceRub.className = 'plan-card__price plan-card__price--current';
-        currentPriceRub.textContent = discountedRub + ' \u20BD';
+        currentPriceRub.textContent = discountedRub + ' ₽';
         rubBlock.appendChild(currentPriceRub);
 
         var oldPriceRub = document.createElement('span');
         oldPriceRub.className = 'plan-card__price plan-card__price--old';
-        oldPriceRub.textContent = plan.price_rub + ' \u20BD';
+        oldPriceRub.textContent = plan.price_rub + ' ₽';
         rubBlock.appendChild(oldPriceRub);
       } else {
         var priceRub = document.createElement('span');
         priceRub.className = 'plan-card__price';
-        priceRub.textContent = plan.price_rub + ' \u20BD';
+        priceRub.textContent = plan.price_rub + ' ₽';
         rubBlock.appendChild(priceRub);
       }
       priceWrap.appendChild(rubBlock);
@@ -186,17 +183,17 @@
         var discountedStars = Math.round(plan.price_stars * (100 - discountPct) / 100);
         var currentPriceStars = document.createElement('span');
         currentPriceStars.className = 'plan-card__price plan-card__price--stars plan-card__price--current';
-        currentPriceStars.textContent = discountedStars + ' \u2b50';
+        currentPriceStars.textContent = discountedStars + ' ⭐';
         starsBlock.appendChild(currentPriceStars);
 
         var oldPriceStars = document.createElement('span');
         oldPriceStars.className = 'plan-card__price plan-card__price--old';
-        oldPriceStars.textContent = plan.price_stars + ' \u2b50';
+        oldPriceStars.textContent = plan.price_stars + ' ⭐';
         starsBlock.appendChild(oldPriceStars);
       } else {
         var priceStars = document.createElement('span');
         priceStars.className = 'plan-card__price plan-card__price--stars';
-        priceStars.textContent = plan.price_stars + ' \u2b50';
+        priceStars.textContent = plan.price_stars + ' ⭐';
         starsBlock.appendChild(priceStars);
       }
       priceWrap.appendChild(starsBlock);
@@ -246,7 +243,7 @@
     })
     .catch(function (err) {
       if (plansEl) {
-        plansEl.innerHTML = '<p style="color:#c00;text-align:center;padding:20px">\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0442\u0430\u0440\u0438\u0444\u044b: ' + (err && err.message ? err.message : err) + '</p>';
+        plansEl.innerHTML = '<p style="color:#c00;text-align:center;padding:20px">Не удалось загрузить тарифы: ' + (err && err.message ? err.message : err) + '</p>';
       }
     });
 
@@ -302,7 +299,7 @@
         item.setAttribute('data-index', i);
         var img = document.createElement('img');
         img.src = src;
-        img.alt = '\u0421\u043a\u0440\u0438\u043d\u0448\u043e\u0442 ' + (i + 1);
+        img.alt = 'Скриншот ' + (i + 1);
         img.setAttribute('loading', 'lazy');
         item.appendChild(img);
         fragment.appendChild(item);
@@ -349,7 +346,7 @@
     for (var i = 0; i < totalSlides; i++) {
       var dot = document.createElement('button');
       dot.className = 'carousel__dot';
-      dot.setAttribute('aria-label', '\u0421\u043a\u0440\u0438\u043d\u0448\u043e\u0442 ' + (i + 1));
+      dot.setAttribute('aria-label', 'Скриншот ' + (i + 1));
       dot.addEventListener('click', function () {
         var idx = parseInt(this.getAttribute('data-dot-index'), 10);
         setCarousel(idx);
@@ -441,7 +438,6 @@
   var isLightboxOpen = false;
   var isAnimating = false;
   
-  // Zoom variables
   var currentZoom = 1;
   var maxZoom = 3;
   var minZoom = 1;
@@ -463,7 +459,7 @@
     currentX = 0;
     currentY = 0;
     lightboxImage.src = SCREENSHOT_IMAGES[currentImageIndex];
-    lightboxImage.alt = '\u0421\u043a\u0440\u0438\u043d\u0448\u043e\u0442 ' + (currentImageIndex + 1);
+    lightboxImage.alt = 'Скриншот ' + (currentImageIndex + 1);
     lightboxCounter.textContent = (currentImageIndex + 1) + ' / ' + totalSlides;
     lightboxImage.className = 'lightbox__image zoom-in';
     lightboxImage.style.transform = '';
@@ -471,7 +467,6 @@
     updateZoomButtons();
     lightbox.classList.add('active');
     document.body.style.overflow = 'hidden';
-    // Remove animation class after it completes so inline transform works for zoom
     setTimeout(function () {
       if (isLightboxOpen && lightboxImage) {
         lightboxImage.className = 'lightbox__image';
@@ -502,7 +497,6 @@
   }
 
   function updateLightboxImageTransform() {
-    // Remove animation classes that would override inline style.transform
     lightboxImage.classList.remove('zoom-in', 'slide-in-right', 'slide-in-left', 'slide-out-right', 'slide-out-left');
     
     var viewW = window.innerWidth;
@@ -581,7 +575,7 @@
 
     setTimeout(function () {
       lightboxImage.src = SCREENSHOT_IMAGES[currentImageIndex];
-      lightboxImage.alt = '\u0421\u043a\u0440\u0438\u043d\u0448\u043e\u0442 ' + (currentImageIndex + 1);
+      lightboxImage.alt = 'Скриншот ' + (currentImageIndex + 1);
       lightboxCounter.textContent = (currentImageIndex + 1) + ' / ' + totalSlides;
       lightboxImage.className = 'lightbox__image ' + slideInClass;
       updateZoomDisplay();
@@ -600,7 +594,6 @@
     });
   }
 
-  // Zoom button events
   if (zoomInBtn) {
     zoomInBtn.addEventListener('click', function () {
       zoomIn();
@@ -614,7 +607,6 @@
     });
   }
 
-  // Lightbox drag and zoom events
   if (lightboxImage) {
     lightboxImage.addEventListener('mousedown', function (e) {
       if (currentZoom <= 1) return;

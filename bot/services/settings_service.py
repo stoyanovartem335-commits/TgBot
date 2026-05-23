@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..database import get_settings, update_settings
+from ..database import get_settings
 
 PLANS_DEF = [
     ("1m", "1 месяц", 30),
@@ -32,7 +32,7 @@ async def get_plans_from_settings() -> list[dict]:
     ]
 
 
-async def apply_discount(price: int, discount_pct: int) -> int:
+def apply_discount(price: int, discount_pct: int) -> int:
     if discount_pct <= 0:
         return price
     return int(round(price * (100 - discount_pct) / 100))
@@ -41,7 +41,7 @@ async def apply_discount(price: int, discount_pct: int) -> int:
 async def price_with_active_discount(price: int) -> int:
     enabled, pct = await get_active_discount()
     if enabled and pct > 0:
-        return await apply_discount(price, pct)
+        return apply_discount(price, pct)
     return price
 
 
