@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Таблица Калывана</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/static/style.css?v=15" />
+  <link rel="stylesheet" href="/static/style.css?v=16" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -124,15 +124,15 @@
       <div class="plans-grid" id="plansGrid"></div>
     </section>
 
-    <footer class="footer">
-      <p>Оплата: Telegram Stars, Triboote или банковский перевод.</p>
-      <p class="footer__small">© 2026 Таблица Калывана</p>
-    </footer>
-
     <div id="browserFooter" style="display:none" class="browser-footer">
       <p>Telegram-Bot: <a id="botLink" href="https://t.me/TestKeyBot_bot" target="_blank" rel="noopener">@TestKeyBot_bot</a></p>
       <p>Наш канал: <a id="channelLink" href="https://t.me/KalivanVC" target="_blank" rel="noopener">@KalivanVC</a></p>
     </div>
+
+    <footer class="footer">
+      <p>Оплата: Telegram Stars, Triboote или банковский перевод.</p>
+      <p class="footer__small">© <span id="footerYear">2026</span> Таблица Калывана</p>
+    </footer>
   </main>
 
   <div class="lightbox" id="lightbox">
@@ -149,6 +149,6 @@
     <div class="lightbox__zoom-info" id="lightboxZoomInfo"></div>
   </div>
 
-  <script src="/static/script.js?v=12"></script>
+  <script src="/static/script.js?v=13"></script>
 </body>
 </html>

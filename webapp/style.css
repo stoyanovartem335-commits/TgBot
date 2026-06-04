@@ -867,7 +867,11 @@ img, video, canvas, svg {
   background: transparent;
   border: none;
   padding: 2px;
-  overflow: visible;
+  overflow: hidden;
+  isolation: isolate;
+}
+.plan-card--highlighted::after {
+  display: none;
 }
 
 .plan-card--highlighted::before {
@@ -884,35 +888,46 @@ img, video, canvas, svg {
 }
 
 .plan-card--highlighted:hover::before {
-  opacity: 1;
+  opacity: 0.72;
 }
 
 .plan-card--highlighted:hover {
-  box-shadow: 0 12px 40px rgba(0, 255, 136, 0.15);
+  background: transparent;
+  border: none;
+  box-shadow: 0 14px 36px rgba(0, 255, 136, 0.11);
 }
 
 .plan-card--highlighted .plan-card__inner::before {
   content: '';
   position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg,
-    transparent 0%,
-    transparent 30%,
-    rgba(0,255,136,0.015) 45%,
-    rgba(0,255,136,0.03) 50%,
-    rgba(0,255,136,0.015) 55%,
-    transparent 70%,
-    transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer 4s ease-in-out infinite;
+  inset: -24px -40px;
+  width: 78%;
+  background: linear-gradient(115deg,
+    transparent 8%,
+    rgba(0,255,136,0.075) 38%,
+    rgba(255,255,255,0.045) 50%,
+    transparent 72%);
+  filter: blur(18px);
+  opacity: 0.42;
+  transform: translate3d(-112%, 0, 0) skewX(-14deg);
+  animation: highlightedPlanSweep 4.6s ease-in-out infinite;
   pointer-events: none;
   border-radius: inherit;
-  z-index: 1;
+  z-index: 0;
 }
 
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+@keyframes highlightedPlanSweep {
+  0%, 18% {
+    opacity: 0;
+    transform: translate3d(-112%, 0, 0) skewX(-14deg);
+  }
+  46% {
+    opacity: 0.58;
+  }
+  74%, 100% {
+    opacity: 0;
+    transform: translate3d(126%, 0, 0) skewX(-14deg);
+  }
 }
 
 @keyframes gradientShift {
@@ -1126,9 +1141,8 @@ img, video, canvas, svg {
 
 .browser-footer {
   text-align: center;
-  padding: 16px 0 24px;
-  border-top: 1px solid var(--border-subtle);
-  margin-top: 16px;
+  padding: 0 0 28px;
+  margin-top: -14px;
 }
 .browser-footer p {
   font-size: 12px;

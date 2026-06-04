@@ -16,6 +16,11 @@
   var buyBtn = document.getElementById('heroBuyBtn');
   var scrollBtn = document.getElementById('heroScrollBtn');
   var progressBar = document.getElementById('progressBar');
+  var footerYear = document.getElementById('footerYear');
+
+  if (footerYear) {
+    footerYear.textContent = String(new Date().getFullYear());
+  }
 
   function debounce(func, wait) {
     var timeout;
