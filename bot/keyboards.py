@@ -21,6 +21,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=BTN_MAIN, web_app=WebAppInfo(url=f"{WEBAPP_URL}/"))],
             [KeyboardButton(text=BTN_NEWS), KeyboardButton(text=BTN_SUPPORT)],
         ],
+        is_persistent=True,
         resize_keyboard=True,
     )
 
@@ -47,7 +48,6 @@ def payment_methods_kb(plan_code: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="⭐ Telegram Stars", callback_data=f"pay:stars:{plan_code}")],
             [InlineKeyboardButton(text="💳 Triboote", callback_data=f"pay:triboote:{plan_code}")],
             [InlineKeyboardButton(text="🏦 По реквизитам", callback_data=f"pay:requisites:{plan_code}")],
-            [InlineKeyboardButton(text="↩️ Отменить", callback_data="pay:cancel")],
         ]
     )
 

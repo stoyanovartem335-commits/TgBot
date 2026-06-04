@@ -285,6 +285,9 @@
   var carouselIndex = 0;
   var carouselInterval = null;
   var isCarouselPaused = false;
+  var carouselDragState = null;
+  var carouselClickGuard = false;
+  var preloadedImages = {};
 
   function initCarousel(images) {
     SCREENSHOT_IMAGES = images;
@@ -300,7 +303,11 @@
         var img = document.createElement('img');
         img.src = src;
         img.alt = 'Скриншот ' + (i + 1);
-        img.setAttribute('loading', 'lazy');
+        img.setAttribute('loading', i === 0 ? 'eager' : 'lazy');
+        img.setAttribute('decoding', 'async');
+        img.setAttribute('draggable', 'false');
+        img.setAttribute('sizes', '(min-width: 769px) 1200px, 100vw');
+        if (i === 0) img.setAttribute('fetchpriority', 'high');
         item.appendChild(img);
         fragment.appendChild(item);
       });
@@ -314,6 +321,7 @@
 
     document.querySelectorAll('.carousel__item').forEach(function (card) {
       card.addEventListener('click', function () {
+        if (carouselClickGuard) return;
         var index = parseInt(card.getAttribute('data-index'), 10);
         if (!isNaN(index)) openLightbox(index);
       });
@@ -358,31 +366,37 @@
   }
 
   function updateCarousel() {
+    if (totalSlides <= 0) return;
     if (carouselTrack) {
-      carouselTrack.style.transform = 'translateX(-' + (carouselIndex * 100) + '%)';
+      carouselTrack.style.transform = 'translate3d(-' + (carouselIndex * 100) + '%, 0, 0)';
     }
     var dots = document.querySelectorAll('.carousel__dot');
     dots.forEach(function (dot, i) {
       dot.classList.toggle('active', i === carouselIndex);
     });
+    preloadAround(carouselIndex);
   }
 
   function nextCarousel() {
+    if (totalSlides <= 0) return;
     carouselIndex = (carouselIndex + 1) % totalSlides;
     updateCarousel();
   }
 
   function prevCarousel() {
+    if (totalSlides <= 0) return;
     carouselIndex = (carouselIndex - 1 + totalSlides) % totalSlides;
     updateCarousel();
   }
 
   function setCarousel(index) {
+    if (totalSlides <= 0) return;
     carouselIndex = index;
     updateCarousel();
   }
 
   function startCarouselTimer() {
+    if (totalSlides <= 1) return;
     stopCarouselTimer();
     carouselInterval = setInterval(function () {
       if (!isCarouselPaused) nextCarousel();
@@ -401,10 +415,103 @@
     startCarouselTimer();
   }
 
+  function preloadImage(index) {
+    if (totalSlides <= 0) return;
+    var normalized = (index + totalSlides) % totalSlides;
+    var src = SCREENSHOT_IMAGES[normalized];
+    if (!src || preloadedImages[src]) return;
+    preloadedImages[src] = true;
+    var img = new Image();
+    img.decoding = 'async';
+    img.src = src;
+    if (img.decode) img.decode().catch(function () {});
+  }
+
+  function preloadAround(index) {
+    preloadImage(index);
+    preloadImage(index + 1);
+    preloadImage(index - 1);
+  }
+
+  function setCarouselDragTransform(offsetPx) {
+    if (!carouselTrack) return;
+    var base = -(carouselIndex * 100);
+    carouselTrack.style.transform = 'translate3d(calc(' + base + '% + ' + offsetPx + 'px), 0, 0)';
+  }
+
+  function onCarouselPointerDown(e) {
+    if (!carouselTrack || totalSlides <= 1) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.target && e.target.closest && e.target.closest('button')) return;
+
+    var viewport = carouselTrack.parentElement;
+    carouselDragState = {
+      active: true,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      currentX: e.clientX,
+      width: viewport ? viewport.getBoundingClientRect().width : window.innerWidth,
+      swiping: false
+    };
+    isCarouselPaused = true;
+    stopCarouselTimer();
+    carouselTrack.classList.add('is-dragging');
+    if (carouselTrack.setPointerCapture) {
+      try { carouselTrack.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+  }
+
+  function onCarouselPointerMove(e) {
+    if (!carouselDragState || !carouselDragState.active || e.pointerId !== carouselDragState.pointerId) return;
+    var dx = e.clientX - carouselDragState.startX;
+    var dy = e.clientY - carouselDragState.startY;
+
+    if (!carouselDragState.swiping && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+      carouselDragState.swiping = true;
+    }
+    if (!carouselDragState.swiping) return;
+
+    e.preventDefault();
+    carouselDragState.currentX = e.clientX;
+    carouselClickGuard = Math.abs(dx) > 6;
+    setCarouselDragTransform(dx);
+  }
+
+  function finishCarouselPointer(e) {
+    if (!carouselDragState || !carouselDragState.active) return;
+    var dx = carouselDragState.currentX - carouselDragState.startX;
+    var threshold = Math.min(90, Math.max(42, carouselDragState.width * 0.18));
+
+    carouselDragState.active = false;
+    if (carouselTrack) {
+      carouselTrack.classList.remove('is-dragging');
+      if (carouselTrack.releasePointerCapture && e && e.pointerId != null) {
+        try { carouselTrack.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
+
+    if (carouselDragState.swiping && Math.abs(dx) > threshold) {
+      if (dx < 0) nextCarousel();
+      else prevCarousel();
+    } else {
+      updateCarousel();
+    }
+
+    carouselDragState = null;
+    isCarouselPaused = false;
+    resetCarouselTimer();
+    setTimeout(function () { carouselClickGuard = false; }, 120);
+  }
+
   var carouselEl = document.getElementById('carousel');
   if (carouselEl) {
     carouselEl.addEventListener('mouseenter', function () { isCarouselPaused = true; });
     carouselEl.addEventListener('mouseleave', function () { isCarouselPaused = false; });
+    carouselEl.addEventListener('pointerdown', onCarouselPointerDown);
+    carouselEl.addEventListener('pointermove', onCarouselPointerMove, { passive: false });
+    carouselEl.addEventListener('pointerup', finishCarouselPointer);
+    carouselEl.addEventListener('pointercancel', finishCarouselPointer);
   }
 
   var carouselPrevBtn = document.getElementById('carouselPrev');
@@ -450,6 +557,23 @@
   var dragStartTouchX = 0;
   var dragStartTouchY = 0;
   var lastTouchDistance = 0;
+  var lightboxBaseWidth = 0;
+  var lightboxBaseHeight = 0;
+  var lightboxTransformFrame = null;
+
+  function syncLightboxMetrics() {
+    if (!lightboxImage) return;
+    lightboxBaseWidth = lightboxImage.clientWidth || lightboxImage.naturalWidth || window.innerWidth;
+    lightboxBaseHeight = lightboxImage.clientHeight || lightboxImage.naturalHeight || window.innerHeight;
+  }
+
+  function scheduleLightboxImageTransform() {
+    if (lightboxTransformFrame) return;
+    lightboxTransformFrame = requestAnimationFrame(function () {
+      lightboxTransformFrame = null;
+      updateLightboxImageTransform();
+    });
+  }
 
   function openLightbox(index) {
     currentImageIndex = index;
@@ -463,6 +587,7 @@
     lightboxCounter.textContent = (currentImageIndex + 1) + ' / ' + totalSlides;
     lightboxImage.className = 'lightbox__image zoom-in';
     lightboxImage.style.transform = '';
+    requestAnimationFrame(syncLightboxMetrics);
     updateZoomDisplay();
     updateZoomButtons();
     lightbox.classList.add('active');
@@ -498,11 +623,12 @@
 
   function updateLightboxImageTransform() {
     lightboxImage.classList.remove('zoom-in', 'slide-in-right', 'slide-in-left', 'slide-out-right', 'slide-out-left');
+    if (!lightboxBaseWidth || !lightboxBaseHeight) syncLightboxMetrics();
     
     var viewW = window.innerWidth;
     var viewH = window.innerHeight;
-    var imgW = lightboxImage.offsetWidth;
-    var imgH = lightboxImage.offsetHeight;
+    var imgW = lightboxBaseWidth || lightboxImage.clientWidth || viewW;
+    var imgH = lightboxBaseHeight || lightboxImage.clientHeight || viewH;
     
     var visualW = imgW * currentZoom;
     var visualH = imgH * currentZoom;
@@ -518,6 +644,7 @@
 
   function zoomIn() {
     if (currentZoom >= maxZoom) return;
+    syncLightboxMetrics();
     currentZoom = Math.min(currentZoom + zoomStep, maxZoom);
     lightboxImage.classList.add('animated-transform');
     updateLightboxImageTransform();
@@ -530,6 +657,7 @@
 
   function zoomOut() {
     if (currentZoom <= minZoom) return;
+    syncLightboxMetrics();
     currentZoom = Math.max(currentZoom - zoomStep, minZoom);
     if (currentZoom === minZoom) {
       currentX = 0;
@@ -578,6 +706,7 @@
       lightboxImage.alt = 'Скриншот ' + (currentImageIndex + 1);
       lightboxCounter.textContent = (currentImageIndex + 1) + ' / ' + totalSlides;
       lightboxImage.className = 'lightbox__image ' + slideInClass;
+      requestAnimationFrame(syncLightboxMetrics);
       updateZoomDisplay();
       updateZoomButtons();
 
@@ -608,6 +737,11 @@
   }
 
   if (lightboxImage) {
+    lightboxImage.addEventListener('load', function () {
+      syncLightboxMetrics();
+      if (isLightboxOpen && currentZoom > 1) updateLightboxImageTransform();
+    });
+
     lightboxImage.addEventListener('mousedown', function (e) {
       if (currentZoom <= 1) return;
       isDragging = true;
@@ -618,7 +752,9 @@
     });
 
     lightboxImage.addEventListener('touchstart', function (e) {
+      if (!isLightboxOpen) return;
       if (e.touches.length === 2) {
+        e.preventDefault();
         lastTouchDistance = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
@@ -629,18 +765,19 @@
         dragStartTouchX = e.touches[0].clientX - currentX;
         dragStartTouchY = e.touches[0].clientY - currentY;
       }
-    });
+    }, { passive: false });
 
     document.addEventListener('mousemove', function (e) {
       if (!isDragging || !isLightboxOpen || currentZoom <= 1) return;
       currentX = e.clientX - dragStartX;
       currentY = e.clientY - dragStartY;
-      updateLightboxImageTransform();
+      scheduleLightboxImageTransform();
     });
 
     document.addEventListener('touchmove', function (e) {
       if (!isLightboxOpen) return;
       if (e.touches.length === 2 && lastTouchDistance) {
+        e.preventDefault();
         var currentDistance = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
@@ -650,16 +787,17 @@
         if (newZoom !== currentZoom) {
           currentZoom = newZoom;
           lastTouchDistance = currentDistance;
-          updateLightboxImageTransform();
+          scheduleLightboxImageTransform();
           updateZoomDisplay();
           updateZoomButtons();
         }
       } else if (isDragging && e.touches.length === 1 && currentZoom > 1) {
+        e.preventDefault();
         currentX = e.touches[0].clientX - dragStartTouchX;
         currentY = e.touches[0].clientY - dragStartTouchY;
-        updateLightboxImageTransform();
+        scheduleLightboxImageTransform();
       }
-    });
+    }, { passive: false });
 
     document.addEventListener('mouseup', function () {
       if (isDragging) {

@@ -15,6 +15,8 @@ a, button, .plan-card, .btn, .carousel__item, .carousel__dot {
   --green-dark: #009950;
   --green-muted: rgba(0,255,136,0.1);
   --green-grid: rgba(0,255,136,0.03);
+  --accent-cyan: #44d7ff;
+  --accent-gold: #ffd166;
   --text-primary: #ffffff;
   --text-secondary: rgba(255,255,255,0.7);
   --text-muted: rgba(255,255,255,0.35);
@@ -24,6 +26,7 @@ a, button, .plan-card, .btn, .carousel__item, .carousel__dot {
   --radius-xl: 24px;
   --blur: blur(20px);
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html {
@@ -116,6 +119,16 @@ img, video, canvas, svg {
   text-align: center;
   padding: 40px 0 48px;
 }
+
+.hero__badge,
+.hero__title,
+.hero__subtitle,
+.hero__actions {
+  animation: heroFadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.hero__title { animation-delay: 0.06s; }
+.hero__subtitle { animation-delay: 0.12s; }
+.hero__actions { animation-delay: 0.18s; }
 
 .hero__badge {
   display: inline-flex;
@@ -229,53 +242,81 @@ img, video, canvas, svg {
 
 .feature-card {
   position: relative;
+  --card-accent: var(--green-primary);
+  --card-accent-soft: rgba(0,255,136,0.1);
+  --card-border-hover: rgba(0,255,136,0.28);
   background: var(--bg-card);
   backdrop-filter: var(--blur);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
   padding: 28px 24px;
-  transition: var(--transition);
+  transition: transform var(--transition-spring), border-color var(--transition), background var(--transition), box-shadow var(--transition);
   overflow: hidden;
+  isolation: isolate;
+  will-change: transform;
+}
+.feature-card:nth-child(2) {
+  --card-accent: var(--accent-cyan);
+  --card-accent-soft: rgba(68,215,255,0.1);
+  --card-border-hover: rgba(68,215,255,0.24);
+}
+.feature-card:nth-child(3) {
+  --card-accent: var(--accent-gold);
+  --card-accent-soft: rgba(255,209,102,0.1);
+  --card-border-hover: rgba(255,209,102,0.24);
+}
+.feature-card:nth-child(4) {
+  --card-accent: #b8ffdf;
+  --card-accent-soft: rgba(184,255,223,0.1);
+  --card-border-hover: rgba(184,255,223,0.22);
 }
 .feature-card:hover {
-  border-color: var(--border-accent);
-  transform: translateY(-2px);
+  border-color: var(--card-border-hover);
+  background: rgba(255,255,255,0.045);
+  transform: translateY(-4px);
+  box-shadow: 0 18px 42px rgba(0,0,0,0.26), 0 0 0 1px rgba(255,255,255,0.02) inset;
 }
 .feature-card:hover .feature-card__glow {
   opacity: 1;
+  transform: translate3d(74%, 0, 0) skewX(-14deg);
 }
 
 .feature-card__glow {
   position: absolute;
-  top: -40px;
-  right: -40px;
-  width: 120px;
-  height: 120px;
-  background: var(--green-primary);
-  border-radius: 50%;
-  filter: blur(60px);
+  inset: -1px;
+  width: 70%;
+  background: linear-gradient(115deg, transparent 0%, var(--card-accent-soft) 42%, rgba(255,255,255,0.08) 50%, transparent 62%);
   opacity: 0;
-  transition: opacity 0.4s ease;
+  transform: translate3d(-110%, 0, 0) skewX(-14deg);
+  transition: opacity 0.32s ease, transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
+  z-index: 0;
 }
 
 .feature-card__icon {
+  position: relative;
+  z-index: 1;
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: var(--green-muted);
+  background: var(--card-accent-soft);
+  border: 1px solid rgba(255,255,255,0.05);
+  color: var(--card-accent);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22px;
   margin-bottom: 16px;
-  transition: var(--transition);
+  transition: transform var(--transition-spring), box-shadow var(--transition), background var(--transition);
 }
 .feature-card:hover .feature-card__icon {
-  transform: scale(1.1);
+  transform: translateY(-2px) scale(1.08) rotate(-3deg);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.18);
 }
 
 .feature-card__title {
+  position: relative;
+  z-index: 1;
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 8px;
@@ -284,6 +325,8 @@ img, video, canvas, svg {
 }
 
 .feature-card__desc {
+  position: relative;
+  z-index: 1;
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.6;
@@ -296,27 +339,43 @@ img, video, canvas, svg {
   background: transparent;
   border: none;
   overflow: hidden;
+  contain: layout paint;
 }
 
 .carousel__viewport {
   position: relative;
   overflow: hidden;
+  border-radius: var(--radius-lg);
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .carousel__track {
   display: flex;
   align-items: flex-start;
   transition: transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+.carousel__track.is-dragging {
+  transition: none;
+  cursor: grabbing;
 }
 
 .carousel__item {
   flex: 0 0 100%;
-  cursor: pointer;
+  cursor: grab;
   user-select: none !important;
   -webkit-user-drag: none !important;
   overflow: hidden;
   line-height: 0;
   border-radius: var(--radius-lg);
+  contain: content;
+  transform: translateZ(0);
+}
+.carousel__track.is-dragging .carousel__item {
+  cursor: grabbing;
 }
 .carousel__item img {
   width: 100%;
@@ -325,6 +384,8 @@ img, video, canvas, svg {
   pointer-events: none;
   user-select: none !important;
   -webkit-user-drag: none !important;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .carousel__dots {
@@ -401,6 +462,8 @@ img, video, canvas, svg {
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.35s ease, visibility 0.35s ease;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 .lightbox.active {
   opacity: 1;
@@ -428,6 +491,8 @@ img, video, canvas, svg {
   touch-action: none;
   cursor: grab;
   transform-origin: center center;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .lightbox__image.grabbing {
   cursor: grabbing;
@@ -636,10 +701,12 @@ img, video, canvas, svg {
   backdrop-filter: var(--blur);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  transition: var(--transition);
+  transition: transform var(--transition-spring), border-color var(--transition), background var(--transition);
 }
 .advantage-item:hover {
   border-color: var(--border-accent);
+  background: rgba(255,255,255,0.04);
+  transform: translateX(3px);
 }
 
 .advantage-item__check {
@@ -678,6 +745,7 @@ img, video, canvas, svg {
   transition: all 0.4s ease-out;
   overflow: hidden;
   z-index: 1;
+  will-change: transform;
 }
 
 .plan-card:hover {
@@ -889,6 +957,7 @@ img, video, canvas, svg {
   opacity: 0;
   transform: translateY(24px);
   transition: opacity 0.6s ease, transform 0.6s ease;
+  will-change: opacity, transform;
 }
 [data-animate].visible {
   opacity: 1;
@@ -896,6 +965,17 @@ img, video, canvas, svg {
 }
 [hidden] {
   display: none !important;
+}
+
+@keyframes heroFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 640px) {
@@ -934,6 +1014,18 @@ img, video, canvas, svg {
   .plan-card__inner { padding: 24px 28px; }
   .section { padding: 64px 0; }
   .section__title { font-size: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 
