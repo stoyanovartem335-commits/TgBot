@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from json import JSONDecodeError
 from urllib.parse import urljoin
 
 import aiohttp
@@ -26,6 +27,10 @@ class TribootePayment:
 
 
 class TribooteError(RuntimeError):
+    pass
+
+
+class TributeShopNotFoundError(TribooteError):
     pass
 
 
@@ -90,8 +95,22 @@ async def create_payment(
     ) as resp:
         text = await resp.text()
         if resp.status >= 400:
-            log.error("Triboote error: %s %s", resp.status, text)
-            raise TribooteError(f"Triboote вернул {resp.status}: {text[:200]}")
+            log.error("Tribute error: %s %s", resp.status, text)
+            try:
+                error_data = await resp.json(content_type=None)
+            except (JSONDecodeError, ValueError, TypeError):
+                error_data = {}
+            code = str(error_data.get("code") or "")
+            message = str(error_data.get("message") or text[:200])
+            request_id = str(error_data.get("requestId") or "")
+            if resp.status == 404 and code == "error_not_found" and "shop not found" in message.lower():
+                raise TributeShopNotFoundError(
+                    "Shop API недоступен: Tribute не нашёл активный магазин для этого API-ключа "
+                    "(shop not found). Нужно активировать магазин в разделе «Товары»/Shop API "
+                    "или использовать ссылки инфопродуктов. "
+                    f"requestId={request_id or 'unknown'}"
+                )
+            raise TribooteError(f"Tribute вернул {resp.status}: {message[:200]}")
         try:
             data = await resp.json(content_type=None)
         except Exception as exc:

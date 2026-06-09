@@ -9,6 +9,7 @@ from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..config import (
+    ADMIN_ID,
     TRIBUTE_PAYMENT_MODE,
     TRIBUTE_PRODUCT_IDS,
     TRIBUTE_PRODUCT_NAMES,
@@ -46,6 +47,37 @@ _PLAN_NAME_PATTERNS: dict[str, tuple[str, ...]] = {
     "2m": (r"\b2\s*(m|mo|month|months)\b", r"2\s*мес", r"2\s*месяц", r"\b60\s*(д|day|days)\b"),
     "1m": (r"\b1\s*(m|mo|month)\b", r"1\s*мес", r"1\s*месяц", r"\b30\s*(д|day|days)\b"),
 }
+
+
+def _is_admin(user_id: int | None) -> bool:
+    return user_id is not None and user_id == ADMIN_ID
+
+
+async def _send_payment_error(call: CallbackQuery, exc: Exception, plan_code: str) -> None:
+    if call.message is None or call.from_user is None:
+        return
+
+    if _is_admin(call.from_user.id):
+        await call.message.answer(
+            "⚠️ Не удалось создать платёж через Tribute.\n"
+            f"Причина: {exc}"
+        )
+        return
+
+    await call.message.answer("⚠️ Не удалось создать платёж через Tribute.")
+
+    user_ref = f"@{call.from_user.username}" if call.from_user.username else f"id={call.from_user.id}"
+    try:
+        await call.bot.send_message(
+            ADMIN_ID,
+            "⚠️ <b>Ошибка создания платежа Tribute</b>\n\n"
+            f"Пользователь: {user_ref}\n"
+            f"Тариф: <b>{PLAN_LABELS.get(plan_code, plan_code)}</b>\n"
+            f"TRIBUTE_PAYMENT_MODE: <code>{TRIBUTE_PAYMENT_MODE}</code>\n"
+            f"Причина: <code>{str(exc)}</code>",
+        )
+    except Exception:
+        log.exception("Failed to notify admin about Tribute payment error")
 
 
 @router.callback_query(F.data.startswith("pay:triboote:"))
@@ -91,11 +123,7 @@ async def on_pay_triboote(call: CallbackQuery) -> None:
             )
         except TribooteError as exc:
             log.error("Tribute error: %s", exc)
-            await call.message.answer(
-                "⚠️ Не удалось создать платёж через Tribute.\n"
-                f"Причина: {exc}\n\n"
-                "Проверьте ссылки/ключ API Tribute или попробуйте другой способ оплаты."
-            )
+            await _send_payment_error(call, exc, plan_code)
             return
         pay_url = result.pay_url
         external_ref = result.payment_id
