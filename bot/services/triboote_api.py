@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from urllib.parse import urljoin
 
 import aiohttp
 
-from ..config import TRIBOOTE_API_KEY, TRIBOOTE_API_URL, WEBAPP_URL
+from ..config import (
+    TRIBUTE_API_KEY,
+    TRIBUTE_API_URL,
+    TRIBUTE_CURRENCY,
+    TRIBUTE_PRODUCT_IDS,
+    TRIBUTE_PRODUCT_URLS,
+    WEBAPP_URL,
+)
 
 log = logging.getLogger(__name__)
 
@@ -14,6 +22,7 @@ log = logging.getLogger(__name__)
 class TribootePayment:
     payment_id: str
     pay_url: str
+    webapp_pay_url: str | None = None
 
 
 class TribooteError(RuntimeError):
@@ -46,29 +55,36 @@ async def create_payment(
     amount_rub: int,
     payment_id: str,
     description: str,
+    user_id: int | None = None,
+    plan_code: str | None = None,
+    title: str | None = None,
 ) -> TribootePayment:
-    if not TRIBOOTE_API_URL or not TRIBOOTE_API_KEY:
+    if not TRIBUTE_API_URL or not TRIBUTE_API_KEY:
         raise TribooteError(
-            "Triboote API не сконфигурирован (TRIBOOTE_API_URL / TRIBOOTE_API_KEY)"
+            "Tribute Shop API не сконфигурирован (TRIBUTE_API_URL / TRIBUTE_API_KEY)"
         )
 
+    endpoint = urljoin(f"{TRIBUTE_API_URL.rstrip('/')}/", "shop/orders")
     payload = {
-        "amount": amount_rub,
-        "currency": "RUB",
-        "external_id": payment_id,
+        "amount": amount_rub * 100,
+        "currency": TRIBUTE_CURRENCY,
+        "title": title or description[:100],
         "description": description,
-        "webhook_url": f"{WEBAPP_URL}/triboote/webhook",
-        "success_url": f"{WEBAPP_URL}/triboote/success",
+        "successUrl": f"{WEBAPP_URL}/triboote/success",
+        "failUrl": f"{WEBAPP_URL}/triboote/fail",
+        "customerId": str(user_id or ""),
+        "comment": f"payment_id={payment_id};plan={plan_code or ''}",
+        "period": "onetime",
     }
     headers = {
-        "Authorization": f"Bearer {TRIBOOTE_API_KEY}",
+        "Api-Key": TRIBUTE_API_KEY,
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
 
     session = await get_session()
     async with session.post(
-        f"{TRIBOOTE_API_URL}/payments",
+        endpoint,
         json=payload,
         headers=headers,
     ) as resp:
@@ -81,8 +97,17 @@ async def create_payment(
         except Exception as exc:
             raise TribooteError(f"Невалидный ответ Triboote: {exc}") from exc
 
-    pay_url = data.get("pay_url") or data.get("payment_url") or data.get("url")
-    ext_id = data.get("id") or data.get("payment_id") or payment_id
+    pay_url = data.get("webappPaymentUrl") or data.get("paymentUrl")
+    webapp_pay_url = data.get("webappPaymentUrl")
+    ext_id = data.get("uuid") or data.get("id") or data.get("payment_id") or payment_id
     if not pay_url:
         raise TribooteError("Triboote не вернул ссылку на оплату")
-    return TribootePayment(payment_id=str(ext_id), pay_url=str(pay_url))
+    return TribootePayment(payment_id=str(ext_id), pay_url=str(pay_url), webapp_pay_url=webapp_pay_url)
+
+
+def get_product_payment_url(plan_code: str) -> str | None:
+    return TRIBUTE_PRODUCT_URLS.get(plan_code)
+
+
+def get_product_ref(plan_code: str) -> str | None:
+    return TRIBUTE_PRODUCT_IDS.get(plan_code) or TRIBUTE_PRODUCT_URLS.get(plan_code)

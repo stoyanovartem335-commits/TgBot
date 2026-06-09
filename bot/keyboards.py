@@ -46,7 +46,7 @@ def payment_methods_kb(plan_code: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="⭐ Telegram Stars", callback_data=f"pay:stars:{plan_code}")],
-            [InlineKeyboardButton(text="💳 Triboote", callback_data=f"pay:triboote:{plan_code}")],
+            [InlineKeyboardButton(text="💳 Tribute", callback_data=f"pay:triboote:{plan_code}")],
             [InlineKeyboardButton(text="🏦 По реквизитам", callback_data=f"pay:requisites:{plan_code}")],
         ]
     )

@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 PAYMENT_METHOD_LABEL = {
     "stars": "Telegram Stars",
-    "triboote": "Triboote",
+    "triboote": "Tribute",
     "requisites": "По реквизитам",
 }
 

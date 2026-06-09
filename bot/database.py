@@ -36,6 +36,8 @@ async def init_db() -> None:
     await _db.bot_purchases.create_index("token", unique=True)
     await _db.bot_pending_payments.create_index("payment_id", unique=True)
     await _db.bot_pending_payments.create_index("user_id")
+    await _db.bot_pending_payments.create_index("external_ref")
+    await _db.bot_pending_payments.create_index([("user_id", 1), ("payment_method", 1), ("status", 1)])
     await _db.bot_gsheets_requests.create_index("user_id")
     existing = await _db.bot_settings.find_one({"_id": "global"})
     if not existing:
@@ -101,18 +103,24 @@ async def create_pending(
     external_ref: str | None = None,
 ) -> None:
     db = await get_db()
+    now = datetime.now(timezone.utc).isoformat()
     await db.bot_pending_payments.update_one(
         {"payment_id": payment_id},
-        {"$set": {
-            "payment_id": payment_id,
-            "user_id": user_id,
-            "username": username,
-            "plan_code": plan_code,
-            "payment_method": payment_method,
-            "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "external_ref": external_ref,
-        }},
+        {
+            "$setOnInsert": {
+                "payment_id": payment_id,
+                "status": "pending",
+                "created_at": now,
+            },
+            "$set": {
+                "user_id": user_id,
+                "username": username,
+                "plan_code": plan_code,
+                "payment_method": payment_method,
+                "external_ref": external_ref,
+                "updated_at": now,
+            },
+        },
         upsert=True,
     )
 
@@ -122,11 +130,37 @@ async def get_pending(payment_id: str) -> dict | None:
     return await db.bot_pending_payments.find_one({"payment_id": payment_id})
 
 
+async def get_pending_by_external_ref(external_ref: str) -> dict | None:
+    db = await get_db()
+    return await db.bot_pending_payments.find_one({"external_ref": external_ref})
+
+
+async def get_latest_pending_for_user(
+    *,
+    user_id: int,
+    payment_method: str,
+) -> dict | None:
+    db = await get_db()
+    return await db.bot_pending_payments.find_one(
+        {"user_id": user_id, "payment_method": payment_method, "status": {"$in": ["pending", "processing", "failed"]}},
+        sort=[("_id", -1)],
+    )
+
+
+async def mark_pending_processing(payment_id: str) -> bool:
+    db = await get_db()
+    result = await db.bot_pending_payments.update_one(
+        {"payment_id": payment_id, "status": {"$in": ["pending", "failed"]}},
+        {"$set": {"status": "processing", "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return result.modified_count == 1
+
+
 async def mark_pending_status(payment_id: str, status: str) -> None:
     db = await get_db()
     await db.bot_pending_payments.update_one(
         {"payment_id": payment_id},
-        {"$set": {"status": status}},
+        {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
 
 

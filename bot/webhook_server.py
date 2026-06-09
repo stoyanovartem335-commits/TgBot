@@ -4,6 +4,7 @@ import hmac
 import json
 import logging
 import os
+import base64
 import time
 from hashlib import sha256
 
@@ -14,13 +15,13 @@ from aiohttp import web
 
 from .config import (
     ADMIN_WEB_SECRET_PATH,
-    TRIBOOTE_WEBHOOK_SECRET,
+    TRIBUTE_WEBHOOK_SECRET,
     WEB_HOST,
     WEB_PORT,
     WEBAPP_DIR,
 )
 from .database import get_settings
-from .handlers.triboote import complete_from_webhook
+from .handlers.triboote import complete_from_tribute_event
 from .services.settings_service import get_plans_from_settings
 
 log = logging.getLogger(__name__)
@@ -181,25 +182,46 @@ async def triboote_success_handler(request: web.Request) -> web.Response:
     )
 
 
+async def triboote_fail_handler(request: web.Request) -> web.Response:
+    return web.Response(
+        content_type="text/html",
+        charset="utf-8",
+        text=(
+            "<!doctype html><meta charset='utf-8'>"
+            "<title>Оплата не завершена</title>"
+            "<body style='font-family:system-ui;text-align:center;padding:40px'>"
+            "<h2>Оплата не завершена</h2>"
+            "<p>Вернитесь в Telegram и попробуйте оплатить ещё раз или выберите другой способ оплаты.</p>"
+            "</body>"
+        ),
+    )
+
+
 def _verify_triboote_signature(body: bytes, header_sig: str | None) -> bool:
-    if not TRIBOOTE_WEBHOOK_SECRET:
-        log.warning("TRIBOOTE_WEBHOOK_SECRET not set — accepting without verification")
+    if not TRIBUTE_WEBHOOK_SECRET:
+        log.warning("TRIBUTE_API_KEY/TRIBUTE_WEBHOOK_SECRET not set - accepting Tribute webhook without verification")
         return True
     if not header_sig:
         return False
-    expected = hmac.new(
-        TRIBOOTE_WEBHOOK_SECRET.encode("utf-8"), body, sha256
-    ).hexdigest()
+    digest = hmac.new(TRIBUTE_WEBHOOK_SECRET.encode("utf-8"), body, sha256).digest()
+    expected_hex = digest.hex()
+    expected_b64 = base64.b64encode(digest).decode("ascii")
     candidate = header_sig.split("=", 1)[1] if "=" in header_sig else header_sig
-    return hmac.compare_digest(expected, candidate.strip())
+    candidate = candidate.strip()
+    return hmac.compare_digest(expected_hex, candidate) or hmac.compare_digest(expected_b64, candidate)
 
 
 def make_triboote_webhook_handler(bot: Bot):
     async def handler(request: web.Request) -> web.Response:
         body = await request.read()
-        sig = request.headers.get("X-Triboote-Signature") or request.headers.get("X-Signature")
+        sig = (
+            request.headers.get("trbt-signature")
+            or request.headers.get("X-Tribute-Signature")
+            or request.headers.get("X-Triboote-Signature")
+            or request.headers.get("X-Signature")
+        )
         if not _verify_triboote_signature(body, sig):
-            log.warning("Triboote webhook bad signature")
+            log.warning("Tribute webhook bad signature")
             return web.Response(status=401, text="bad signature")
 
         try:
@@ -207,22 +229,12 @@ def make_triboote_webhook_handler(bot: Bot):
         except json.JSONDecodeError:
             return web.Response(status=400, text="invalid json")
 
-        status = (data.get("status") or data.get("event") or "").lower()
-        payment_id = (
-            data.get("external_id")
-            or data.get("payment_id")
-            or data.get("id")
-            or ""
-        )
-        if not payment_id:
-            return web.Response(status=400, text="missing payment id")
-
-        if status in {"paid", "succeeded", "success", "completed", "payment.success"}:
-            ok = await complete_from_webhook(bot, str(payment_id))
-            return web.Response(status=200 if ok else 404, text="ok" if ok else "unknown")
-
-        log.info("Triboote webhook ignored status=%s id=%s", status, payment_id)
-        return web.Response(status=200, text="ignored")
+        try:
+            ok = await complete_from_tribute_event(bot, data)
+        except Exception:
+            log.exception("Tribute webhook processing failed")
+            return web.Response(status=500, text="processing failed")
+        return web.json_response({"status": "ok" if ok else "unknown"}, status=200 if ok else 404)
 
     return handler
 
@@ -251,7 +263,6 @@ def build_app(bot: Bot) -> web.Application:
         log.info("API health check from %s", request.remote)
         return web.json_response({"status": "ok", "uptime": uptime})
 
-    # Middleware that short-circuits ping paths before any other middleware runs
     _PING_PATHS = {"/api/health", "/api/ping", "/api/nosleep", "/health"}
 
     @web.middleware
@@ -275,6 +286,7 @@ def build_app(bot: Bot) -> web.Application:
     app.router.add_get("/api/images", images_json_handler)
     app.router.add_post("/api/select-plan", select_plan_api_handler)
     app.router.add_get("/triboote/success", triboote_success_handler)
+    app.router.add_get("/triboote/fail", triboote_fail_handler)
     app.router.add_post("/triboote/webhook", make_triboote_webhook_handler(bot))
     app.router.add_static("/static", path=str(WEBAPP_DIR), show_index=False)
 

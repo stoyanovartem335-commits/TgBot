@@ -25,6 +25,14 @@ def _int(name: str, default: int | None = None) -> int:
     return int(raw)
 
 
+def _env_first(*names: str, default: str = "") -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return default
+
+
 @dataclass(frozen=True)
 class Plan:
     code: str
@@ -50,7 +58,6 @@ API_ADMIN_TOKEN: str = _req("API_ADMIN_TOKEN")
 
 WEBAPP_URL: str = _req("WEBAPP_URL").rstrip("/")
 WEB_HOST: str = os.getenv("WEB_HOST", "0.0.0.0")
-# Render.com injects $PORT; fall back to $WEB_PORT, then 8080
 WEB_PORT: int = int(os.getenv("PORT") or os.getenv("WEB_PORT") or 8080)
 
 REQUISITES_TEXT: str = os.getenv("REQUISITES_TEXT", "")
@@ -60,6 +67,48 @@ REQUISITES_NAME: str = os.getenv("REQUISITES_NAME", "")
 TRIBOOTE_API_URL: str = (os.getenv("TRIBOOTE_API_URL") or "").rstrip("/")
 TRIBOOTE_API_KEY: str = os.getenv("TRIBOOTE_API_KEY", "")
 TRIBOOTE_WEBHOOK_SECRET: str = os.getenv("TRIBOOTE_WEBHOOK_SECRET", "")
+
+TRIBUTE_API_URL: str = _env_first(
+    "TRIBUTE_API_URL",
+    "TRIBOOTE_API_URL",
+    default="https://tribute.tg/api/v1",
+).rstrip("/")
+TRIBUTE_API_KEY: str = _env_first("TRIBUTE_API_KEY", "TRIBOOTE_API_KEY")
+TRIBUTE_WEBHOOK_SECRET: str = _env_first(
+    "TRIBUTE_WEBHOOK_SECRET",
+    "TRIBOOTE_WEBHOOK_SECRET",
+    "TRIBUTE_API_KEY",
+    "TRIBOOTE_API_KEY",
+)
+TRIBUTE_PAYMENT_MODE: str = _env_first("TRIBUTE_PAYMENT_MODE", "TRIBOOTE_PAYMENT_MODE", default="auto").lower()
+TRIBUTE_CURRENCY: str = _env_first("TRIBUTE_CURRENCY", "TRIBOOTE_CURRENCY", default="rub").lower()
+
+_PLAN_ENV_SUFFIXES = {
+    "1m": "1M",
+    "2m": "2M",
+    "3m": "3M",
+    "6m": "6M",
+    "forever": "FOREVER",
+}
+
+
+def _plan_env_map(kind: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for code, suffix in _PLAN_ENV_SUFFIXES.items():
+        value = _env_first(
+            f"TRIBUTE_PRODUCT_{kind}_{suffix}",
+            f"TRIBOOTE_PRODUCT_{kind}_{suffix}",
+            f"TRIBUTE_{suffix}_{kind}",
+            f"TRIBOOTE_{suffix}_{kind}",
+        ).strip()
+        if value:
+            result[code] = value
+    return result
+
+
+TRIBUTE_PRODUCT_URLS: dict[str, str] = _plan_env_map("URL")
+TRIBUTE_PRODUCT_IDS: dict[str, str] = _plan_env_map("ID")
+TRIBUTE_PRODUCT_NAMES: dict[str, str] = _plan_env_map("NAME")
 
 TG_CHANNEL_URL: str = os.getenv("TG_CHANNEL_URL", "https://t.me/KalivanVC")
 

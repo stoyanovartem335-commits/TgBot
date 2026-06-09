@@ -23,11 +23,31 @@
         sync: false
       - key: WEBAPP_URL
         sync: false
-      - key: TRIBOOTE_API_URL
+      - key: TRIBUTE_API_URL
+        value: https://tribute.tg/api/v1
+      - key: TRIBUTE_API_KEY
         sync: false
-      - key: TRIBOOTE_API_KEY
+      - key: TRIBUTE_PAYMENT_MODE
+        value: auto
+      - key: TRIBUTE_PRODUCT_URL_1M
         sync: false
-      - key: TRIBOOTE_WEBHOOK_SECRET
+      - key: TRIBUTE_PRODUCT_URL_2M
+        sync: false
+      - key: TRIBUTE_PRODUCT_URL_3M
+        sync: false
+      - key: TRIBUTE_PRODUCT_URL_6M
+        sync: false
+      - key: TRIBUTE_PRODUCT_URL_FOREVER
+        sync: false
+      - key: TRIBUTE_PRODUCT_ID_1M
+        sync: false
+      - key: TRIBUTE_PRODUCT_ID_2M
+        sync: false
+      - key: TRIBUTE_PRODUCT_ID_3M
+        sync: false
+      - key: TRIBUTE_PRODUCT_ID_6M
+        sync: false
+      - key: TRIBUTE_PRODUCT_ID_FOREVER
         sync: false
       - key: TG_CHANNEL_URL
         sync: false
