@@ -77,38 +77,71 @@
       tag: 'Старт',
       title: '1 месяц',
       term: '30 дней доступа',
-      note: 'Короткий доступ для знакомства со скриптом.',
-      benefits: ['Личный токен доступа', 'Обновления цен и таблиц']
+      note: 'Базовый доступ без долгих обязательств.',
+      months: 1
     },
     '2m': {
       tag: 'Баланс',
       title: '2 месяца',
       term: '60 дней доступа',
-      note: 'Спокойный срок для проверки связки в работе.',
-      benefits: ['Выгоднее одного месяца', 'Доступ к Lua-функциям']
+      note: 'Удобный срок с небольшой экономией.',
+      months: 2
     },
     '3m': {
       tag: 'Популярный',
       title: '3 месяца',
       term: '90 дней доступа',
-      note: 'Оптимальный вариант для регулярной работы.',
-      benefits: ['Полный набор инструментов', 'Подходит для активной работы']
+      note: 'Оптимальный выбор для регулярной работы.',
+      months: 3
     },
     '6m': {
       tag: 'Выгодно',
       title: '6 месяцев',
       term: '180 дней доступа',
       note: 'Долгий доступ без частых продлений.',
-      benefits: ['Максимальная выгода по сроку', 'Все будущие обновления']
+      months: 6
     },
     'forever': {
       tag: 'Навсегда',
       title: 'Forever',
       term: 'Бессрочный доступ',
       note: 'Один платёж и доступ без ограничения срока.',
-      benefits: ['Бессрочный токен', 'Все ключевые функции']
+      months: null
     }
   };
+
+  function effectiveRubPrice(plan) {
+    var price = Number(plan && plan.price_rub) || 0;
+    if (discountEnabled && discountPct > 0) {
+      return Math.round(price * (100 - discountPct) / 100);
+    }
+    return price;
+  }
+
+  function savingsPercent(plan, meta, baseMonthPrice) {
+    if (!meta || !meta.months || !baseMonthPrice) return 0;
+    var regular = baseMonthPrice * meta.months;
+    var actual = effectiveRubPrice(plan);
+    if (regular <= 0 || actual <= 0 || actual >= regular) return 0;
+    return Math.round((1 - actual / regular) * 100);
+  }
+
+  function planBenefits(plan, meta, baseMonthPrice) {
+    if (plan.code === '1m') {
+      return ['Личный токен доступа', 'Обновления цен и таблиц'];
+    }
+
+    if (plan.code === 'forever') {
+      return ['Все привилегии', 'Бессрочный доступ без продлений'];
+    }
+
+    var saving = savingsPercent(plan, meta, baseMonthPrice);
+    var savingText = saving > 0 ? 'Экономия ' + saving + '%' : 'Без повторной оплаты каждый месяц';
+    if (plan.highlighted) {
+      savingText = saving > 0 ? 'Максимальная выгода: экономия ' + saving + '%' : 'Максимальная выгода';
+    }
+    return ['Все привилегии', savingText];
+  }
 
   function togglePromoAdvantages(enabled) {
     document.querySelectorAll('[data-promo-only]').forEach(function (el) {
@@ -151,6 +184,8 @@
   function renderPlans(plans) {
     if (!plansEl) return;
     var fragment = document.createDocumentFragment();
+    var oneMonthPlan = plans.find(function (item) { return item.code === '1m'; });
+    var baseMonthPrice = effectiveRubPrice(oneMonthPlan);
     
     plans.forEach(function (plan) {
       var meta = PLAN_META[plan.code] || {
@@ -158,8 +193,9 @@
         title: plan.label,
         term: plan.description || 'Доступ к инструментам',
         note: 'Доступ к таблице, скрипту и обновлениям.',
-        benefits: ['Личный токен доступа', 'Обновления цен']
+        months: 1
       };
+      var benefitsList = planBenefits(plan, meta, baseMonthPrice);
       var wrapper = document.createElement('div');
       wrapper.className = 'plan-card';
       wrapper.setAttribute('data-animate', '');
@@ -204,7 +240,7 @@
 
       var benefits = document.createElement('ul');
       benefits.className = 'plan-card__benefits';
-      (meta.benefits || []).forEach(function (text) {
+      benefitsList.forEach(function (text) {
         var item = document.createElement('li');
         item.textContent = text;
         benefits.appendChild(item);
@@ -221,17 +257,17 @@
         var discountedRub = Math.round(plan.price_rub * (100 - discountPct) / 100);
         var currentPriceRub = document.createElement('span');
         currentPriceRub.className = 'plan-card__price plan-card__price--current';
-        currentPriceRub.textContent = discountedRub + ' ₽';
+        currentPriceRub.textContent = discountedRub + '\u00a0₽';
         rubBlock.appendChild(currentPriceRub);
 
         var oldPriceRub = document.createElement('span');
         oldPriceRub.className = 'plan-card__price plan-card__price--old';
-        oldPriceRub.textContent = plan.price_rub + ' ₽';
+        oldPriceRub.textContent = plan.price_rub + '\u00a0₽';
         rubBlock.appendChild(oldPriceRub);
       } else {
         var priceRub = document.createElement('span');
         priceRub.className = 'plan-card__price';
-        priceRub.textContent = plan.price_rub + ' ₽';
+        priceRub.textContent = plan.price_rub + '\u00a0₽';
         rubBlock.appendChild(priceRub);
       }
       priceWrap.appendChild(rubBlock);
@@ -243,17 +279,17 @@
         var discountedStars = Math.round(plan.price_stars * (100 - discountPct) / 100);
         var currentPriceStars = document.createElement('span');
         currentPriceStars.className = 'plan-card__price plan-card__price--stars plan-card__price--current';
-        currentPriceStars.textContent = discountedStars + ' ⭐';
+        currentPriceStars.textContent = discountedStars + '\u00a0⭐';
         starsBlock.appendChild(currentPriceStars);
 
         var oldPriceStars = document.createElement('span');
         oldPriceStars.className = 'plan-card__price plan-card__price--old';
-        oldPriceStars.textContent = plan.price_stars + ' ⭐';
+        oldPriceStars.textContent = plan.price_stars + '\u00a0⭐';
         starsBlock.appendChild(oldPriceStars);
       } else {
         var priceStars = document.createElement('span');
         priceStars.className = 'plan-card__price plan-card__price--stars';
-        priceStars.textContent = plan.price_stars + ' ⭐';
+        priceStars.textContent = plan.price_stars + '\u00a0⭐';
         starsBlock.appendChild(priceStars);
       }
       priceWrap.appendChild(starsBlock);

@@ -1162,6 +1162,11 @@ img, video, canvas, svg {
     rgba(8, 14, 12, 0.94);
   border: 1px solid rgba(255,255,255,0.09);
   box-shadow: 0 14px 34px rgba(0,0,0,0.22);
+  transition:
+    transform 0.46s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.28s ease,
+    background 0.28s ease,
+    box-shadow 0.28s ease;
 }
 
 .plan-card:not(.plan-card--highlighted)::before {
@@ -1181,15 +1186,23 @@ img, video, canvas, svg {
   mask-composite: exclude;
 }
 
-.plan-card:nth-child(2) {
+.plan-card[data-code="1m"] {
+  --plan-accent: #7aa8ff;
+}
+
+.plan-card[data-code="2m"] {
   --plan-accent: var(--accent-cyan);
 }
 
-.plan-card:nth-child(4) {
+.plan-card[data-code="3m"] {
+  --plan-accent: var(--green-primary);
+}
+
+.plan-card[data-code="6m"] {
   --plan-accent: var(--accent-gold);
 }
 
-.plan-card:nth-child(5) {
+.plan-card[data-code="forever"] {
   --plan-accent: #b8ffdf;
 }
 
@@ -1198,7 +1211,7 @@ img, video, canvas, svg {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.066), rgba(255,255,255,0.024)),
     rgba(9, 17, 14, 0.96);
-  transform: translateY(-5px) scale(1.012);
+  transform: translateY(-7px) scale(1.025);
   box-shadow: 0 18px 44px rgba(0,0,0,0.28), 0 0 26px color-mix(in srgb, var(--plan-accent) 12%, transparent);
 }
 
@@ -1209,9 +1222,9 @@ img, video, canvas, svg {
 
 .plan-card--highlighted {
   padding: 1px;
-  border: 1px solid color-mix(in srgb, var(--green-primary) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--plan-accent) 52%, transparent);
   background:
-    linear-gradient(135deg, rgba(0,255,136,0.46), rgba(68,215,255,0.32), rgba(255,209,102,0.24)),
+    linear-gradient(135deg, color-mix(in srgb, var(--plan-accent) 48%, transparent), rgba(68,215,255,0.26), rgba(255,209,102,0.18)),
     rgba(8, 14, 12, 0.94);
 }
 
@@ -1317,11 +1330,17 @@ img, video, canvas, svg {
 }
 
 .plan-card__price-block {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: nowrap;
 }
 
 .plan-card__price-block::before {
+  flex: 1 1 auto;
+  min-width: 42px;
   color: rgba(255,255,255,0.48);
   font-size: 11px;
   font-weight: 700;
@@ -1337,8 +1356,13 @@ img, video, canvas, svg {
 }
 
 .plan-card__price {
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  line-height: 1;
   color: color-mix(in srgb, var(--plan-accent) 86%, white);
-  font-size: 20px;
+  font-size: 19px;
 }
 
 .plan-card__action {
@@ -1384,6 +1408,26 @@ img, video, canvas, svg {
   opacity: 1;
   transform: translateY(0);
 }
+
+.plans-grid .plan-card.visible:hover {
+  z-index: 4;
+  transform: translateY(-7px) scale(1.025);
+}
+
+.plans-grid .plan-card.visible:active {
+  transform: translateY(-2px) scale(0.995);
+}
+
+.plans-grid .plan-card.visible:hover .plan-card__inner {
+  background: rgba(5, 10, 8, 0.94);
+}
+
+@media (hover: none) {
+  .plans-grid .plan-card.visible:hover {
+    transform: translateY(0);
+  }
+}
+
 [hidden] {
   display: none !important;
 }
@@ -1423,11 +1467,22 @@ img, video, canvas, svg {
   .btn { padding: 12px 24px; font-size: 14px; }
   .plans-grid { grid-template-columns: 1fr; gap: 12px; }
   .plan-card { flex-direction: column; }
-  .plan-card__inner { flex-direction: column; align-items: stretch; gap: 12px; padding: 17px; }
-  .plan-card--highlighted .plan-card__inner { padding-top: 17px; }
+  .plan-card__inner { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px; }
+  .plan-card--highlighted .plan-card__inner { padding-top: 14px; }
   .plan-card__badge { left: auto; right: auto; }
+  .plan-card__info { gap: 8px; }
+  .plan-card__name { font-size: 18px; }
+  .plan-card__term { font-size: 11px; }
+  .plan-card__desc { min-height: 0; font-size: 11px; line-height: 1.42; }
+  .plan-card__benefits { gap: 4px; }
+  .plan-card__benefits li { font-size: 11px; line-height: 1.35; }
   .plan-card__price { align-self: flex-start; }
-  .plan-card__price-wrap { align-items: stretch; width: 100%; }
+  .plan-card__price-wrap { align-items: stretch; width: 100%; gap: 7px; padding-top: 10px; }
+  .plan-card__price-block { gap: 7px; }
+  .plan-card__price-block::before { min-width: 38px; font-size: 10px; }
+  .plan-card__price { font-size: 18px; }
+  .plan-card__price--old { font-size: 13px; }
+  .plan-card__action { min-height: 36px; font-size: 12px; }
   .carousel__arrow { width: 32px; height: 32px; font-size: 18px; }
   .carousel__arrow--prev { left: 2px; }
   .carousel__arrow--next { right: 2px; }
