@@ -254,6 +254,7 @@
       rubBlock.className = 'plan-card__price-block';
 
       if (discountEnabled && discountPct > 0) {
+        rubBlock.classList.add('plan-card__price-block--discounted');
         var discountedRub = Math.round(plan.price_rub * (100 - discountPct) / 100);
         var currentPriceRub = document.createElement('span');
         currentPriceRub.className = 'plan-card__price plan-card__price--current';
@@ -276,6 +277,7 @@
       starsBlock.className = 'plan-card__price-block';
 
       if (discountEnabled && discountPct > 0) {
+        starsBlock.classList.add('plan-card__price-block--discounted');
         var discountedStars = Math.round(plan.price_stars * (100 - discountPct) / 100);
         var currentPriceStars = document.createElement('span');
         currentPriceStars.className = 'plan-card__price plan-card__price--stars plan-card__price--current';

@@ -21,8 +21,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=BTN_MAIN, web_app=WebAppInfo(url=f"{WEBAPP_URL}/"))],
             [KeyboardButton(text=BTN_NEWS), KeyboardButton(text=BTN_SUPPORT)],
         ],
-        is_persistent=True,
-        one_time_keyboard=False,
+        one_time_keyboard=True,
         resize_keyboard=True,
         input_field_placeholder="Выберите действие",
     )
