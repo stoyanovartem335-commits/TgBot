@@ -6,7 +6,8 @@ import logging
 from aiogram import F, Router
 from aiogram.types import Message
 
-from ..keyboards import payment_methods_kb
+from ..keyboards import main_menu_kb, payment_methods_kb
+from ..services.payment_flow import PAYMENT_METHODS_TEXT, selected_plan_text
 from ..services.settings_service import apply_discount, get_active_discount, get_plans_from_settings
 
 log = logging.getLogger(__name__)
@@ -38,10 +39,8 @@ async def on_webapp_data(message: Message) -> None:
         price_rub = apply_discount(price_rub, discount_pct)
         price_stars = apply_discount(price_stars, discount_pct)
 
-    text = (
-        "Вы выбрали:\n\n"
-        f"📦 <b>{plan_label}</b>\n"
-        f"💰 Цена: <b>{price_rub} ₽</b> / <b>{price_stars} ⭐</b>\n\n"
-        "Выберите способ оплаты:"
+    await message.answer(
+        selected_plan_text(plan_label, price_rub, price_stars, "💰"),
+        reply_markup=main_menu_kb(),
     )
-    await message.answer(text, reply_markup=payment_methods_kb(plan_code))
+    await message.answer(PAYMENT_METHODS_TEXT, reply_markup=payment_methods_kb(plan_code))

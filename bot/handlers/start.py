@@ -4,7 +4,8 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 
-from ..keyboards import main_menu_kb
+from ..keyboards import main_menu_kb, payment_methods_kb
+from ..services.payment_flow import PAYMENT_METHODS_TEXT, selected_plan_text
 from ..services.settings_service import get_plans_from_settings, get_active_discount, apply_discount
 
 router = Router(name="start")
@@ -34,14 +35,11 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
                 price_rub = apply_discount(price_rub, discount_pct)
                 price_stars = apply_discount(price_stars, discount_pct)
 
-            from ..keyboards import payment_methods_kb
-            text = (
-                "Вы выбрали:\n\n"
-                f"📦 <b>{plan['label']}</b>\n"
-                f"💵 Цена: <b>{price_rub} ₽</b> / <b>{price_stars} ⭐</b>\n\n"
-                "Выберите способ оплаты:"
+            await message.answer(
+                selected_plan_text(plan["label"], price_rub, price_stars),
+                reply_markup=main_menu_kb(),
             )
-            await message.answer(text, reply_markup=payment_methods_kb(plan_code))
+            await message.answer(PAYMENT_METHODS_TEXT, reply_markup=payment_methods_kb(plan_code))
             return
 
     await message.answer(WELCOME, reply_markup=main_menu_kb())
