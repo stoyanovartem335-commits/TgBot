@@ -39,7 +39,7 @@ services:
       - key: TRIBUTE_API_KEY
         sync: false
       - key: TRIBUTE_SUBSCRIPTION_URL
-        sync: false
+        value: https://t.me/tribute/app?startapp=sYQs
       - key: TRIBUTE_DEBUG_WEBHOOKS
         value: "1"
       - key: TRIBUTE_ALLOWED_CHANNEL_IDS
@@ -50,8 +50,6 @@ services:
         sync: false
       - key: TRIBUTE_PERIOD_ID_1M
         sync: false
-      - key: TRIBUTE_PERIOD_ID_2M
-        sync: false
       - key: TRIBUTE_PERIOD_ID_3M
         sync: false
       - key: TRIBUTE_PERIOD_ID_6M
@@ -60,12 +58,16 @@ services:
         sync: false
       - key: TG_CHANNEL_URL
         sync: false
-      - key: REQUISITES_TEXT
-        sync: false
+      - key: FUNPAY_URL_1M
+        value: https://funpay.com/lots/offer?id=45877171
+      - key: FUNPAY_URL_3M
+        value: https://funpay.com/lots/offer?id=45877215
+      - key: FUNPAY_URL_6M
+        value: https://funpay.com/lots/offer?id=45877232
+      - key: FUNPAY_URL_FOREVER
+        value: https://funpay.com/lots/offer?id=45877250
       - key: REQUISITES_CARD
-        sync: false
-      - key: REQUISITES_NAME
-        sync: false
+        value: 9112 3801 7082 5501
       - key: ZIP_FILE_PATH
         value: ./Price_by_KALYVAN.zip
       - key: ADMIN_WEB_SECRET_PATH

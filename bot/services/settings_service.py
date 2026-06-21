@@ -1,22 +1,21 @@
 from __future__ import annotations
 
 from ..database import get_settings
-
-PLANS_DEF = [
-    ("1m", "1 месяц", 30),
-    ("2m", "2 месяца", 60),
-    ("3m", "3 месяца", 90),
-    ("6m", "6 месяцев", 180),
-    ("forever", "Forever", None),
-]
+from .plans import (
+    DEFAULT_PRICES_RUB,
+    DEFAULT_PRICES_STARS,
+    DEFAULT_TARIFF_DESCRIPTIONS,
+    PLAN_DEFS,
+    normalize_plan_map,
+)
 
 
 async def get_plans_from_settings() -> list[dict]:
     settings = await get_settings()
-    prices_rub = settings.get("prices_rub", {})
-    prices_stars = settings.get("prices_stars", {})
+    prices_rub = normalize_plan_map(settings.get("prices_rub", {}), DEFAULT_PRICES_RUB)
+    prices_stars = normalize_plan_map(settings.get("prices_stars", {}), DEFAULT_PRICES_STARS)
     highlighted = settings.get("highlighted_tariff", "3m")
-    descriptions = settings.get("tariff_descriptions", {})
+    descriptions = normalize_plan_map(settings.get("tariff_descriptions", {}), DEFAULT_TARIFF_DESCRIPTIONS)
 
     return [
         {
@@ -28,7 +27,7 @@ async def get_plans_from_settings() -> list[dict]:
             "description": descriptions.get(code, ""),
             "highlighted": code == highlighted,
         }
-        for code, label, days in PLANS_DEF
+        for code, label, days in PLAN_DEFS
     ]
 
 

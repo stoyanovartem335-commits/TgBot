@@ -5,7 +5,7 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 
 from ..keyboards import main_menu_kb, payment_methods_kb
-from ..services.payment_flow import PAYMENT_METHODS_TEXT, selected_plan_text
+from ..services.payment_flow import selected_plan_text
 from ..services.settings_service import get_plans_from_settings, get_active_discount, apply_discount
 
 router = Router(name="start")
@@ -37,9 +37,8 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
 
             await message.answer(
                 selected_plan_text(plan["label"], price_rub, price_stars),
-                reply_markup=main_menu_kb(),
+                reply_markup=payment_methods_kb(plan["label"]),
             )
-            await message.answer(PAYMENT_METHODS_TEXT, reply_markup=payment_methods_kb(plan_code))
             return
 
     await message.answer(WELCOME, reply_markup=main_menu_kb())

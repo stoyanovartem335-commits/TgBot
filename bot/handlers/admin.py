@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -11,25 +11,27 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from ..config import ADMIN_ID
 from ..database import (
+    delete_payment_block,
+    get_active_payment_block,
     get_recent_purchases,
     get_settings,
+    list_active_payment_blocks,
+    set_payment_block,
     get_total_purchases,
     update_settings,
 )
 from ..services.api_client import create_subscription_token
+from ..services.payment_review import format_until, method_label, parse_block_duration, user_ref_html
+from ..services.plans import PLAN_CODES, PLAN_DAYS, PLAN_LABELS
 from ..services.token_service import compute_expiration_str, generate_token
 
 log = logging.getLogger(__name__)
 router = Router(name="admin")
 
-PLAN_CODES = ["1m", "2m", "3m", "6m", "forever"]
-PLAN_LABELS = {"1m": "1 месяц", "2m": "2 месяца", "3m": "3 месяца", "6m": "6 месяцев", "forever": "Forever"}
-PLAN_DAYS = {"1m": 30, "2m": 60, "3m": 90, "6m": 180, "forever": None}
-
-
 class AdminFSM(StatesGroup):
     waiting_price_rub = State()
     waiting_discount_pct = State()
+    waiting_payment_ban_duration = State()
 
 
 def _is_admin(user_id: int | None) -> bool:
@@ -63,6 +65,7 @@ def _admin_main_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="💰 Настроить цены", callback_data="adm:prices")],
         [InlineKeyboardButton(text="🎁 Акция / Промо", callback_data="adm:promo")],
         [InlineKeyboardButton(text="📈 Статистика", callback_data="adm:stats")],
+        [InlineKeyboardButton(text="⛔ Баны оплат", callback_data="adm:payment_bans")],
         [InlineKeyboardButton(text="🏆 Популярный тариф", callback_data="adm:settings")],
     ])
 
@@ -231,6 +234,57 @@ async def show_stats_panel(message: Message | None) -> None:
     else:
         text += "Покупок пока нет."
     kb = InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]])
+    await _edit_or_send(message, text, kb)
+
+
+def _block_button_title(block: dict) -> str:
+    full_name = (block.get("full_name") or "").strip()
+    username = (block.get("username") or "").strip()
+    user = full_name or (f"@{username}" if username else str(block.get("user_id", "")))
+    return f"{method_label(block.get('payment_method', '?'))} | {user}"
+
+
+async def show_payment_bans_panel(message: Message | None, *, notice: str | None = None) -> None:
+    blocks = await list_active_payment_blocks()
+    text = ""
+    if notice:
+        text += f"{notice}\n\n"
+    text += "⛔ <b>Баны оплат</b>\n\n"
+    if not blocks:
+        text += "Активных блокировок нет."
+        kb = InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]])
+        await _edit_or_send(message, text, kb)
+        return
+
+    text += "Выберите пользователя для управления блокировкой:"
+    rows = []
+    for block in blocks:
+        method = block.get("payment_method", "")
+        user_id = int(block.get("user_id", 0))
+        rows.append([InlineKeyboardButton(text=_block_button_title(block), callback_data=f"adm:ban:{method}:{user_id}")])
+    rows.append([_back_kb()])
+    await _edit_or_send(message, text, InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+async def show_payment_ban_detail(message: Message | None, user_id: int, method: str, *, notice: str | None = None) -> None:
+    block = await get_active_payment_block(user_id, method)
+    if not block:
+        await show_payment_bans_panel(message, notice="Блокировка уже не активна.")
+        return
+    text = ""
+    if notice:
+        text += f"{notice}\n\n"
+    text += (
+        "⛔ <b>Блокировка оплаты</b>\n\n"
+        f"Способ: <b>{method_label(method)}</b>\n"
+        f"Пользователь: {user_ref_html(user_id, block.get('full_name'), block.get('username'))}\n"
+        f"Действует до: <b>{format_until(block.get('expires_at'))}</b>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🕒 Изменить срок", callback_data=f"adm:ban_set:{method}:{user_id}")],
+        [InlineKeyboardButton(text="✅ Разбанить", callback_data=f"adm:ban_del:{method}:{user_id}")],
+        [InlineKeyboardButton(text="↩️ К списку", callback_data="adm:payment_bans")],
+    ])
     await _edit_or_send(message, text, kb)
 
 
@@ -423,6 +477,87 @@ async def adm_stats(call: CallbackQuery) -> None:
     await show_stats_panel(call.message)
 
 
+@router.callback_query(F.data == "adm:payment_bans")
+async def adm_payment_bans(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    await call.answer()
+    await show_payment_bans_panel(call.message)
+
+
+@router.callback_query(F.data.startswith("adm:ban:"))
+async def adm_payment_ban_detail(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    parts = call.data.split(":", 3)
+    if len(parts) != 4:
+        return
+    _, _, method, user_id_raw = parts
+    await call.answer()
+    await show_payment_ban_detail(call.message, int(user_id_raw), method)
+
+
+@router.callback_query(F.data.startswith("adm:ban_del:"))
+async def adm_payment_ban_delete(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    parts = call.data.split(":", 3)
+    if len(parts) != 4:
+        return
+    _, _, method, user_id_raw = parts
+    await delete_payment_block(int(user_id_raw), method)
+    await call.answer("Разбанен")
+    await show_payment_bans_panel(call.message, notice="✅ Блокировка снята.")
+
+
+@router.callback_query(F.data.startswith("adm:ban_set:"))
+async def adm_payment_ban_set(call: CallbackQuery, state: FSMContext) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    parts = call.data.split(":", 3)
+    if len(parts) != 4:
+        return
+    _, _, method, user_id_raw = parts
+    await state.update_data(payment_ban_method=method, payment_ban_user_id=int(user_id_raw))
+    await state.set_state(AdminFSM.waiting_payment_ban_duration)
+    await call.answer()
+    await _edit_or_send(
+        call.message,
+        "Введите новый срок блокировки: <code>6ч</code>, <code>12h</code>, <code>2д</code> или <code>3d</code>.",
+        InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]]),
+    )
+
+
+@router.message(AdminFSM.waiting_payment_ban_duration, F.text)
+async def adm_payment_ban_save_duration(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        return
+    parsed = parse_block_duration(message.text or "")
+    if parsed is None:
+        await message.answer("Введите срок в формате <code>6ч</code>, <code>12h</code>, <code>2д</code> или <code>3d</code>.")
+        return
+    delta, label = parsed
+    data = await state.get_data()
+    method = data.get("payment_ban_method")
+    user_id = int(data.get("payment_ban_user_id") or 0)
+    block = await get_active_payment_block(user_id, method)
+    if not block:
+        await state.clear()
+        await show_payment_bans_panel(message, notice="Блокировка уже не активна.")
+        return
+    expires_at = datetime.now(timezone.utc) + delta
+    await set_payment_block(
+        user_id=user_id,
+        payment_method=method,
+        expires_at=expires_at,
+        username=block.get("username"),
+        full_name=block.get("full_name"),
+        admin_id=message.from_user.id,
+    )
+    await state.clear()
+    await show_payment_bans_panel(message, notice=f"✅ Срок блокировки изменён на {label}.")
+
+
 @router.callback_query(F.data == "adm:settings")
 async def adm_settings(call: CallbackQuery) -> None:
     if not _is_admin(call.from_user.id if call.from_user else None):
@@ -449,54 +584,3 @@ async def adm_back(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     if call.message:
         await show_admin_main(call.message, edit=True)
-
-
-@router.callback_query(F.data.startswith("adm:ok:") | F.data.startswith("adm:no:"))
-async def on_admin_decision(call: CallbackQuery) -> None:
-    if not _is_admin(call.from_user.id if call.from_user else None):
-        return
-    await call.answer()
-    from ..database import get_pending, mark_pending_status
-    from ..services.delivery import deliver_purchase
-
-    parts = call.data.split(":", 2)
-    if len(parts) != 3:
-        return
-    _, decision, payment_id = parts
-
-    pending = await get_pending(payment_id)
-    if pending is None:
-        await call.answer("Заявка не найдена", show_alert=True)
-        return
-    if pending.get("status") != "pending":
-        await call.answer(f"Уже обработано: {pending.get('status')}", show_alert=True)
-        if call.message is not None:
-            await call.message.edit_reply_markup(reply_markup=None)
-        return
-
-    if decision == "ok":
-        await deliver_purchase(
-            call.bot,
-            user_id=pending["user_id"],
-            username=pending.get("username"),
-            plan_code=pending["plan_code"],
-            plan_label=PLAN_LABELS.get(pending["plan_code"], pending["plan_code"]),
-            days=PLAN_DAYS.get(pending["plan_code"]),
-            payment_method="requisites",
-        )
-        await mark_pending_status(payment_id, "completed")
-        await call.answer("Подтверждено ✅")
-        if call.message is not None:
-            await call.message.edit_text(call.message.html_text + "\n\n<b>✅ Подтверждено</b>")
-    elif decision == "no":
-        await mark_pending_status(payment_id, "rejected")
-        try:
-            await call.bot.send_message(
-                pending["user_id"],
-                "❌ Заявка отклонена. Свяжитесь с поддержкой.",
-            )
-        except Exception:
-            pass
-        await call.answer("Отклонено")
-        if call.message is not None:
-            await call.message.edit_text(call.message.html_text + "\n\n<b>❌ Отклонено</b>")

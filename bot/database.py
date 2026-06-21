@@ -5,6 +5,13 @@ from datetime import datetime, timedelta, timezone
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from .config import MONGO_URI
+from .services.plans import (
+    DEFAULT_PRICES_RUB,
+    DEFAULT_PRICES_STARS,
+    DEFAULT_TARIFF_DESCRIPTIONS,
+    PLAN_CODES,
+    normalize_plan_map,
+)
 
 _client: AsyncIOMotorClient | None = None
 _db: AsyncIOMotorDatabase | None = None
@@ -44,27 +51,34 @@ async def init_db() -> None:
     await _db.bot_pending_payments.create_index("user_id")
     await _db.bot_pending_payments.create_index("external_ref")
     await _db.bot_pending_payments.create_index([("user_id", 1), ("payment_method", 1), ("status", 1)])
+    await _db.bot_payment_blocks.create_index([("user_id", 1), ("payment_method", 1)], unique=True)
+    await _db.bot_payment_blocks.create_index("expires_at")
     await _db.bot_gsheets_requests.create_index("user_id")
     existing = await _db.bot_settings.find_one({"_id": "global"})
     if not existing:
         await _db.bot_settings.insert_one({
             "_id": "global",
-            "prices_rub": {"1m": 299, "2m": 549, "3m": 799, "6m": 1499, "forever": 4999},
-            "prices_stars": {"1m": 150, "2m": 280, "3m": 400, "6m": 750, "forever": 2500},
+            "prices_rub": DEFAULT_PRICES_RUB,
+            "prices_stars": DEFAULT_PRICES_STARS,
             "highlighted_tariff": "3m",
-            "tariff_descriptions": {
-                "1m": "Базовый доступ на 30 дней",
-                "2m": "Доступ на 60 дней",
-                "3m": "Самый популярный выбор",
-                "6m": "Доступ на 180 дней",
-                "forever": "Бессрочный доступ"
-            },
+            "tariff_descriptions": DEFAULT_TARIFF_DESCRIPTIONS,
             "discounts": {"enabled": False, "percentage": 10, "duration_days": 30},
             "promotion": {"enabled": False, "text": "Купи 1 токен → получи 1 токен для друга"},
             "banner_text": "",
             "marketing_text": "",
             "updated_at": datetime.now(timezone.utc).isoformat(),
         })
+    else:
+        updates = {
+            "prices_rub": normalize_plan_map(existing.get("prices_rub", {}), DEFAULT_PRICES_RUB),
+            "prices_stars": normalize_plan_map(existing.get("prices_stars", {}), DEFAULT_PRICES_STARS),
+            "tariff_descriptions": normalize_plan_map(existing.get("tariff_descriptions", {}), DEFAULT_TARIFF_DESCRIPTIONS),
+        }
+        if existing.get("highlighted_tariff") not in PLAN_CODES:
+            updates["highlighted_tariff"] = "3m"
+        if any(existing.get(key) != value for key, value in updates.items()):
+            updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await _db.bot_settings.update_one({"_id": "global"}, {"$set": updates})
 
 
 def compute_expiry(plan_code: str, days: int | None, paid_at: datetime) -> datetime | None:
@@ -107,25 +121,32 @@ async def create_pending(
     plan_code: str,
     payment_method: str,
     external_ref: str | None = None,
+    full_name: str | None = None,
+    initial_status: str = "pending",
+    extra: dict | None = None,
 ) -> None:
     db = await get_db()
     now = datetime.now(timezone.utc).isoformat()
+    updates = {
+        "user_id": user_id,
+        "username": username,
+        "full_name": full_name,
+        "plan_code": plan_code,
+        "payment_method": payment_method,
+        "external_ref": external_ref,
+        "updated_at": now,
+    }
+    if extra:
+        updates.update(extra)
     await db.bot_pending_payments.update_one(
         {"payment_id": payment_id},
         {
             "$setOnInsert": {
                 "payment_id": payment_id,
-                "status": "pending",
+                "status": initial_status,
                 "created_at": now,
             },
-            "$set": {
-                "user_id": user_id,
-                "username": username,
-                "plan_code": plan_code,
-                "payment_method": payment_method,
-                "external_ref": external_ref,
-                "updated_at": now,
-            },
+            "$set": updates,
         },
         upsert=True,
     )
@@ -168,6 +189,89 @@ async def mark_pending_status(payment_id: str, status: str) -> None:
         {"payment_id": payment_id},
         {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
+
+
+async def update_pending_fields(payment_id: str, updates: dict) -> None:
+    db = await get_db()
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.bot_pending_payments.update_one({"payment_id": payment_id}, {"$set": updates})
+
+
+async def get_active_manual_pending(user_id: int) -> dict | None:
+    db = await get_db()
+    return await db.bot_pending_payments.find_one(
+        {
+            "user_id": user_id,
+            "payment_method": {"$in": ["funpay", "requisites"]},
+            "status": {"$in": ["pending", "pending_review"]},
+        },
+        sort=[("_id", -1)],
+    )
+
+
+def _parse_iso_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+async def get_active_payment_block(user_id: int, payment_method: str) -> dict | None:
+    db = await get_db()
+    doc = await db.bot_payment_blocks.find_one({"user_id": user_id, "payment_method": payment_method})
+    if not doc:
+        return None
+    expires_at = _parse_iso_dt(doc.get("expires_at"))
+    if expires_at is None or expires_at <= datetime.now(timezone.utc):
+        await db.bot_payment_blocks.delete_one({"_id": doc["_id"]})
+        return None
+    return doc
+
+
+async def set_payment_block(
+    *,
+    user_id: int,
+    payment_method: str,
+    expires_at: datetime,
+    username: str | None,
+    full_name: str | None,
+    admin_id: int,
+) -> None:
+    db = await get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    await db.bot_payment_blocks.update_one(
+        {"user_id": user_id, "payment_method": payment_method},
+        {
+            "$set": {
+                "user_id": user_id,
+                "payment_method": payment_method,
+                "username": username,
+                "full_name": full_name,
+                "admin_id": admin_id,
+                "expires_at": expires_at.astimezone(timezone.utc).isoformat(),
+                "updated_at": now,
+            },
+            "$setOnInsert": {"created_at": now},
+        },
+        upsert=True,
+    )
+
+
+async def delete_payment_block(user_id: int, payment_method: str) -> None:
+    db = await get_db()
+    await db.bot_payment_blocks.delete_one({"user_id": user_id, "payment_method": payment_method})
+
+
+async def list_active_payment_blocks(limit: int = 30) -> list[dict]:
+    db = await get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = db.bot_payment_blocks.find({"expires_at": {"$gt": now}}, sort=[("expires_at", 1)], limit=limit)
+    return await cursor.to_list(length=limit)
 
 
 async def latest_token_for_user(user_id: int) -> str | None:

@@ -14,16 +14,13 @@ from ..database import (
     update_purchase_expiration,
 )
 from ..keyboards import post_purchase_kb
+from .payment_review import METHOD_LABELS
 from .settings_service import get_promotion_status
 from .token_service import TokenGenerationError, issue_tokens
 
 log = logging.getLogger(__name__)
 
-PAYMENT_METHOD_LABEL = {
-    "stars": "Telegram Stars",
-    "triboote": "Tribute",
-    "requisites": "По реквизитам",
-}
+PAYMENT_METHOD_LABEL = METHOD_LABELS
 
 
 async def deliver_purchase(

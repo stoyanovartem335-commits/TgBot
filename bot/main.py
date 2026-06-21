@@ -18,7 +18,7 @@ from aiogram.types import (
 
 from .config import BOT_TOKEN
 from .database import close_db, init_db
-from .handlers import admin, gsheets, menu, requisites, stars, start, triboote, webapp
+from .handlers import admin, gsheets, manual_payments, menu, stars, start, triboote, webapp
 from .services import api_client
 from .webhook_server import start_web_server
 
@@ -70,7 +70,7 @@ async def main() -> None:
         webapp.router,
         stars.router,
         triboote.router,
-        requisites.router,
+        manual_payments.router,
         admin.router,
         gsheets.router,
     )

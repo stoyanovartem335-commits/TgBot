@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from aiogram import Bot, F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, User
 
 from ..config import (
     ADMIN_ID,
@@ -27,29 +27,75 @@ from ..database import (
     mark_pending_processing,
     mark_pending_status,
 )
+from ..keyboards import BTN_PAY_TRIBUTE, main_menu_kb
 from ..services.delivery import deliver_purchase, renew_latest_purchase
+from ..services.plans import PLAN_CODES, PLAN_DAYS, PLAN_LABELS, plan_code_by_label
 from ..services.settings_service import price_with_active_discount
 
 log = logging.getLogger(__name__)
 router = Router(name="triboote")
 
-PLAN_LABELS = {
-    "1m": "1 месяц",
-    "2m": "2 месяца",
-    "3m": "3 месяца",
-    "6m": "6 месяцев",
-    "forever": "Forever",
-}
-PLAN_DAYS = {"1m": 30, "2m": 60, "3m": 90, "6m": 180, "forever": None}
-PLAN_CODES = tuple(PLAN_LABELS.keys())
-
 _PLAN_NAME_PATTERNS: dict[str, tuple[str, ...]] = {
     "forever": (r"\bforever\b", r"\blifetime\b", r"навсегда", r"бессроч"),
     "6m": (r"\b6\s*(m|mo|month|months)\b", r"6\s*мес", r"6\s*месяц", r"\b180\s*(д|day|days)\b", r"half\s*year"),
     "3m": (r"\b3\s*(m|mo|month|months)\b", r"3\s*мес", r"3\s*месяц", r"\b90\s*(д|day|days)\b", r"quarter"),
-    "2m": (r"\b2\s*(m|mo|month|months)\b", r"2\s*мес", r"2\s*месяц", r"\b60\s*(д|day|days)\b"),
     "1m": (r"\b1\s*(m|mo|month)\b", r"1\s*мес", r"1\s*месяц", r"\b30\s*(д|day|days)\b"),
 }
+
+
+def _plan_code_from_payment_text(text: str, prefix: str) -> str | None:
+    raw = text.removeprefix(prefix).strip()
+    if raw.startswith("—"):
+        raw = raw[1:].strip()
+    return plan_code_by_label(raw)
+
+
+async def _send_tribute_payment(message: Message, user: User, plan_code: str, *, notify_error: bool) -> bool:
+    settings = await get_settings()
+    prices_rub = settings.get("prices_rub", {})
+    amount = await price_with_active_discount(prices_rub.get(plan_code, 0))
+    label = PLAN_LABELS.get(plan_code, plan_code)
+
+    if amount <= 0:
+        if notify_error:
+            await message.answer("Тариф не найден. Откройте витрину и выберите тариф заново.", reply_markup=main_menu_kb())
+        return False
+
+    if not TRIBUTE_SUBSCRIPTION_URL:
+        if notify_error:
+            await message.answer(
+                "⚠️ Tribute ссылка на подписку не настроена.\n\n"
+                "Админу нужно добавить в env переменную <code>TRIBUTE_SUBSCRIPTION_URL</code>."
+            )
+        try:
+            await message.bot.send_message(
+                ADMIN_ID,
+                "⚠️ Пользователь нажал оплату через Tribute, но <code>TRIBUTE_SUBSCRIPTION_URL</code> пустой.",
+            )
+        except Exception:
+            log.exception("Failed to notify admin about missing Tribute subscription URL")
+        return False
+
+    payment_id = f"tribute:checkout:{user.id}:{uuid.uuid4().hex}"
+    await create_pending(
+        payment_id=payment_id,
+        user_id=user.id,
+        username=user.username,
+        plan_code=plan_code,
+        payment_method="triboote",
+    )
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="💳 Перейти к оплате в Tribute", url=TRIBUTE_SUBSCRIPTION_URL)]]
+    )
+    await message.answer(
+        f"Вы выбрали: <b>{label}</b>\n"
+        f"Цена в боте: <b>{amount} ₽</b>\n\n"
+        "В Tribute откроется окно подписки с тарифами. "
+        "Если там выберете другой срок, бот выдаст доступ по фактически оплаченному тарифу.",
+        reply_markup=kb,
+    )
+    return True
 
 
 @router.callback_query(F.data.startswith("pay:triboote:"))
@@ -58,50 +104,28 @@ async def on_pay_triboote(call: CallbackQuery) -> None:
     if call.message is None or call.from_user is None:
         return
 
-    settings = await get_settings()
-    prices_rub = settings.get("prices_rub", {})
-    amount = await price_with_active_discount(prices_rub.get(plan_code, 0))
-    label = PLAN_LABELS.get(plan_code, plan_code)
+    if not TRIBUTE_SUBSCRIPTION_URL:
+        await call.answer("Tribute ссылка не настроена", show_alert=True)
+        await _send_tribute_payment(call.message, call.from_user, plan_code, notify_error=True)
+        return
 
-    if amount <= 0:
+    ok = await _send_tribute_payment(call.message, call.from_user, plan_code, notify_error=False)
+    if not ok:
         await call.answer("Тариф не найден", show_alert=True)
         return
 
-    if not TRIBUTE_SUBSCRIPTION_URL:
-        await call.answer("Tribute ссылка не настроена", show_alert=True)
-        await call.message.answer(
-            "⚠️ Tribute ссылка на подписку не настроена.\n\n"
-            "Админу нужно добавить в env переменную <code>TRIBUTE_SUBSCRIPTION_URL</code>."
-        )
-        try:
-            await call.bot.send_message(
-                ADMIN_ID,
-                "⚠️ Пользователь нажал оплату через Tribute, но <code>TRIBUTE_SUBSCRIPTION_URL</code> пустой.",
-            )
-        except Exception:
-            log.exception("Failed to notify admin about missing Tribute subscription URL")
-        return
-
     await call.answer("Открываю Tribute...")
-    payment_id = f"tribute:checkout:{call.from_user.id}:{uuid.uuid4().hex}"
-    await create_pending(
-        payment_id=payment_id,
-        user_id=call.from_user.id,
-        username=call.from_user.username,
-        plan_code=plan_code,
-        payment_method="triboote",
-    )
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="💳 Перейти к оплате в Tribute", url=TRIBUTE_SUBSCRIPTION_URL)]]
-    )
-    await call.message.answer(
-        f"Вы выбрали: <b>{label}</b>\n"
-        f"Цена в боте: <b>{amount} ₽</b>\n\n"
-        "В Tribute откроется окно подписки с тарифами. "
-        "Если там выберете другой срок, бот выдаст доступ по фактически оплаченному тарифу.",
-        reply_markup=kb,
-    )
+
+@router.message(F.text.startswith(BTN_PAY_TRIBUTE))
+async def on_pay_tribute_from_keyboard(message: Message) -> None:
+    if message.from_user is None or not message.text:
+        return
+    plan_code = _plan_code_from_payment_text(message.text, BTN_PAY_TRIBUTE)
+    if plan_code is None:
+        await message.answer("Тариф не найден. Откройте витрину и выберите тариф заново.", reply_markup=main_menu_kb())
+        return
+    await _send_tribute_payment(message, message.from_user, plan_code, notify_error=True)
 
 
 async def complete_from_webhook(bot: Bot, payment_id: str) -> bool:

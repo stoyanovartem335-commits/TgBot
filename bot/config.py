@@ -51,16 +51,18 @@ WEBAPP_URL: str = _req("WEBAPP_URL").rstrip("/")
 WEB_HOST: str = os.getenv("WEB_HOST", "0.0.0.0")
 WEB_PORT: int = int(os.getenv("PORT") or os.getenv("WEB_PORT") or 8080)
 
-REQUISITES_TEXT: str = os.getenv("REQUISITES_TEXT", "")
-REQUISITES_CARD: str = os.getenv("REQUISITES_CARD", "")
-REQUISITES_NAME: str = os.getenv("REQUISITES_NAME", "")
-
 TRIBUTE_API_KEY: str = os.getenv("TRIBUTE_API_KEY", "")
-TRIBUTE_SUBSCRIPTION_URL: str = (os.getenv("TRIBUTE_SUBSCRIPTION_URL") or "").strip()
+TRIBUTE_SUBSCRIPTION_URL: str = (os.getenv("TRIBUTE_SUBSCRIPTION_URL") or "https://t.me/tribute/app?startapp=sYQs").strip()
+REQUISITES_CARD: str = (os.getenv("REQUISITES_CARD") or "9112 3801 7082 5501").strip()
+FUNPAY_URLS: dict[str, str] = {
+    "1m": (os.getenv("FUNPAY_URL_1M") or "https://funpay.com/lots/offer?id=45877171").strip(),
+    "3m": (os.getenv("FUNPAY_URL_3M") or "https://funpay.com/lots/offer?id=45877215").strip(),
+    "6m": (os.getenv("FUNPAY_URL_6M") or "https://funpay.com/lots/offer?id=45877232").strip(),
+    "forever": (os.getenv("FUNPAY_URL_FOREVER") or "https://funpay.com/lots/offer?id=45877250").strip(),
+}
 
 _PLAN_ENV_SUFFIXES = {
     "1m": "1M",
-    "2m": "2M",
     "3m": "3M",
     "6m": "6M",
     "forever": "FOREVER",

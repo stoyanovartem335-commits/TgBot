@@ -26,7 +26,7 @@ from .config import (
 from .api_server import setup_api_routes
 from .database import get_settings
 from .handlers.triboote import complete_from_tribute_event
-from .services.payment_flow import PAYMENT_METHODS_TEXT, selected_plan_text
+from .services.payment_flow import selected_plan_text
 from .services.settings_service import get_plans_from_settings
 
 log = logging.getLogger(__name__)
@@ -151,7 +151,7 @@ async def select_plan_api_handler(request: web.Request) -> web.Response:
         price_rub = apply_discount(price_rub, discount_pct)
         price_stars = apply_discount(price_stars, discount_pct)
 
-    from .keyboards import main_menu_kb, payment_methods_kb
+    from .keyboards import payment_methods_kb
     text = selected_plan_text(plan["label"], price_rub, price_stars)
 
     bot = request.app.get("bot")
@@ -159,8 +159,7 @@ async def select_plan_api_handler(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "bot instance not found"}, status=500)
 
     try:
-        await bot.send_message(user_id, text, reply_markup=main_menu_kb())
-        await bot.send_message(user_id, PAYMENT_METHODS_TEXT, reply_markup=payment_methods_kb(plan_code))
+        await bot.send_message(user_id, text, reply_markup=payment_methods_kb(plan["label"]))
         from .config import BOT_USERNAME
         return web.json_response({"ok": True, "bot_url": f"https://t.me/{BOT_USERNAME}"})
     except Exception as exc:

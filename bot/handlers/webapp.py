@@ -6,8 +6,8 @@ import logging
 from aiogram import F, Router
 from aiogram.types import Message
 
-from ..keyboards import main_menu_kb, payment_methods_kb
-from ..services.payment_flow import PAYMENT_METHODS_TEXT, selected_plan_text
+from ..keyboards import payment_methods_kb
+from ..services.payment_flow import selected_plan_text
 from ..services.settings_service import apply_discount, get_active_discount, get_plans_from_settings
 
 log = logging.getLogger(__name__)
@@ -41,6 +41,5 @@ async def on_webapp_data(message: Message) -> None:
 
     await message.answer(
         selected_plan_text(plan_label, price_rub, price_stars, "💰"),
-        reply_markup=main_menu_kb(),
+        reply_markup=payment_methods_kb(plan_label),
     )
-    await message.answer(PAYMENT_METHODS_TEXT, reply_markup=payment_methods_kb(plan_code))
