@@ -12,6 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from ..config import ADMIN_ID
 from ..database import (
+    count_manual_payment_requests,
     delete_payment_block,
     get_active_payment_block,
     get_pending,
@@ -30,6 +31,7 @@ from ..services.token_service import compute_expiration_str, generate_token
 
 log = logging.getLogger(__name__)
 router = Router(name="admin")
+PAYMENT_REQUESTS_PAGE_SIZE = 10
 
 class AdminFSM(StatesGroup):
     waiting_price_rub = State()
@@ -103,6 +105,17 @@ async def show_admin_main(target: Message, *, edit: bool = False, notice: str | 
 
 def _back_kb() -> InlineKeyboardButton:
     return InlineKeyboardButton(text="↩️ Назад", callback_data="adm:back")
+
+
+def _safe_page(value: str | int | None) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _pages_count(total: int, page_size: int = PAYMENT_REQUESTS_PAGE_SIZE) -> int:
+    return max(1, (max(0, total) + page_size - 1) // page_size)
 
 
 async def show_create_token_panel(message: Message | None, *, notice: str | None = None) -> None:
@@ -260,8 +273,38 @@ def _request_button_title(item: dict) -> str:
     return f"{status} | {method} | {plan} | {user}"
 
 
-async def show_payment_requests_panel(message: Message | None, *, notice: str | None = None) -> None:
-    items = await list_manual_payment_requests()
+async def show_payment_requests_panel(message: Message | None, *, notice: str | None = None, page: int = 0) -> None:
+    total = await count_manual_payment_requests()
+    pages = _pages_count(total)
+    page = min(_safe_page(page), pages - 1)
+    items = await list_manual_payment_requests(page=page, limit=PAYMENT_REQUESTS_PAGE_SIZE)
+    text = ""
+    if notice:
+        text += f"{notice}\n\n"
+    text += "🧾 <b>Заявки оплат</b>\n\n"
+    if not items:
+        text += "Заявок пока нет."
+        await _edit_or_send(message, text, InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]]))
+        return
+    rows = [
+        [InlineKeyboardButton(text=_request_button_title(item), callback_data=f"adm:req:{item['payment_id']}:{page}")]
+        for item in items
+    ]
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="<", callback_data=f"adm:payment_requests:{page - 1}"))
+    if (page + 1) * PAYMENT_REQUESTS_PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton(text=">", callback_data=f"adm:payment_requests:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([_back_kb()])
+    await _edit_or_send(
+        message,
+        text + f"Страница <b>{page + 1}/{pages}</b>\n\nПоследние заявки:",
+        InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+    return
+    items = await list_manual_payment_requests(page=0, limit=PAYMENT_REQUESTS_PAGE_SIZE)
     text = ""
     if notice:
         text += f"{notice}\n\n"
@@ -278,7 +321,7 @@ async def show_payment_requests_panel(message: Message | None, *, notice: str | 
     await _edit_or_send(message, text + "Последние заявки:", InlineKeyboardMarkup(inline_keyboard=rows))
 
 
-async def show_payment_request_detail(message: Message | None, item: dict, *, notice: str | None = None) -> None:
+async def show_payment_request_detail(message: Message | None, item: dict, *, notice: str | None = None, page: int = 0) -> None:
     payment_id = item["payment_id"]
     method = item.get("payment_method", "?")
     plan_code = item.get("plan_code", "?")
@@ -306,7 +349,7 @@ async def show_payment_request_detail(message: Message | None, item: dict, *, no
             InlineKeyboardButton(text="❌ Отказать", callback_data=f"manual:no:{payment_id}"),
         ])
         rows.append([InlineKeyboardButton(text="⛔ Заблокировать способ", callback_data=f"manual:block:{payment_id}")])
-    rows.append([InlineKeyboardButton(text="↩️ К заявкам", callback_data="adm:payment_requests")])
+    rows.append([InlineKeyboardButton(text="↩️ К заявкам", callback_data=f"adm:payment_requests:{_safe_page(page)}")])
     await _edit_or_send(message, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
 
@@ -558,17 +601,29 @@ async def adm_payment_requests(call: CallbackQuery) -> None:
     await show_payment_requests_panel(call.message)
 
 
+@router.callback_query(F.data.startswith("adm:payment_requests:"))
+async def adm_payment_requests_page(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    parts = (call.data or "").split(":", 2)
+    page = _safe_page(parts[2] if len(parts) > 2 else 0)
+    await call.answer()
+    await show_payment_requests_panel(call.message, page=page)
+
+
 @router.callback_query(F.data.startswith("adm:req:"))
 async def adm_payment_request_detail(call: CallbackQuery) -> None:
     if not _is_admin(call.from_user.id if call.from_user else None):
         return
-    payment_id = call.data.split(":", 2)[2]
+    parts = (call.data or "").split(":")
+    payment_id = parts[2] if len(parts) > 2 else ""
+    page = _safe_page(parts[3] if len(parts) > 3 else 0)
     item = await get_pending(payment_id)
     if item is None:
         await call.answer("Заявка не найдена", show_alert=True)
         return
     await call.answer()
-    await show_payment_request_detail(call.message, item)
+    await show_payment_request_detail(call.message, item, page=page)
 
 
 @router.callback_query(F.data.startswith("adm:req_photo:"))

@@ -11,6 +11,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from ..config import ADMIN_ID, FUNPAY_URLS, REQUISITES_CARD
 from ..database import (
+    count_manual_requests_for_user,
     create_pending,
     get_active_manual_pending,
     get_active_payment_block,
@@ -28,6 +29,7 @@ from ..services.plans import PLAN_DAYS, PLAN_LABELS, plan_code_by_label
 from ..services.settings_service import price_with_active_discount
 
 router = Router(name="manual_payments")
+REQUESTS_PAGE_SIZE = 10
 
 
 class ManualPaymentFSM(StatesGroup):
@@ -115,7 +117,7 @@ def _request_detail_text(item: dict) -> str:
 
 
 async def _show_my_requests(target: Message, user_id: int, *, notice: str | None = None) -> None:
-    items = await list_manual_requests_for_user(user_id)
+    items = await list_manual_requests_for_user(user_id, page=0, limit=REQUESTS_PAGE_SIZE)
     text = ""
     if notice:
         text += f"{notice}\n\n"
@@ -144,11 +146,82 @@ async def _show_request_detail(call: CallbackQuery, item: dict) -> None:
         await call.message.edit_text(_request_detail_text(item), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
+def _safe_page(value: str | int | None) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _pages_count(total: int, page_size: int = REQUESTS_PAGE_SIZE) -> int:
+    return max(1, (max(0, total) + page_size - 1) // page_size)
+
+
+def _request_page_rows(items: list[dict], page: int, total: int) -> list[list[InlineKeyboardButton]]:
+    rows = [
+        [InlineKeyboardButton(text=_request_title(item), callback_data=f"manual:view:{item['payment_id']}:{page}")]
+        for item in items
+    ]
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="<", callback_data=f"manual:my:{page - 1}"))
+    if (page + 1) * REQUESTS_PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton(text=">", callback_data=f"manual:my:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    return rows
+
+
+async def _show_my_requests_page(
+    target: Message,
+    user_id: int,
+    *,
+    notice: str | None = None,
+    page: int = 0,
+    edit: bool = False,
+) -> None:
+    total = await count_manual_requests_for_user(user_id)
+    pages = _pages_count(total)
+    page = min(_safe_page(page), pages - 1)
+    items = await list_manual_requests_for_user(user_id, page=page, limit=REQUESTS_PAGE_SIZE)
+    text = ""
+    if notice:
+        text += f"{notice}\n\n"
+    text += "🧾 <b>Мои заявки</b>\n\n"
+    if not items:
+        text += "Заявок пока нет."
+        if edit:
+            await target.edit_text(text)
+        else:
+            await target.answer(text, reply_markup=main_menu_kb())
+        return
+    text += f"Страница <b>{page + 1}/{pages}</b>\n\nВыберите заявку:"
+    markup = InlineKeyboardMarkup(inline_keyboard=_request_page_rows(items, page, total))
+    if edit:
+        await target.edit_text(text, reply_markup=markup)
+    else:
+        await target.answer(text, reply_markup=markup)
+
+
+async def _show_request_detail_page(call: CallbackQuery, item: dict, *, page: int = 0) -> None:
+    payment_id = item["payment_id"]
+    status = item.get("status")
+    rows = []
+    if status in {"pending", "pending_review"}:
+        rows.append([InlineKeyboardButton(text="✏️ Изменить скриншот", callback_data=f"manual:edit:{payment_id}")])
+        rows.append([InlineKeyboardButton(text="↩️ Отменить заявку", callback_data=f"manual:cancel:{payment_id}")])
+    else:
+        rows.append([InlineKeyboardButton(text="🗑 Скрыть из списка", callback_data=f"manual:hide:{payment_id}")])
+    rows.append([InlineKeyboardButton(text="↩️ К моим заявкам", callback_data=f"manual:my:{_safe_page(page)}")])
+    if call.message:
+        await call.message.edit_text(_request_detail_text(item), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
 @router.message(F.text == BTN_MY_REQUESTS)
 async def on_my_requests_message(message: Message) -> None:
     if message.from_user is None:
         return
-    await _show_my_requests(message, message.from_user.id)
+    await _show_my_requests_page(message, message.from_user.id)
 
 
 @router.callback_query(F.data == "manual:my")
@@ -157,7 +230,9 @@ async def on_my_requests_callback(call: CallbackQuery) -> None:
         return
     await call.answer()
     if call.message:
-        items = await list_manual_requests_for_user(call.from_user.id)
+        await _show_my_requests_page(call.message, call.from_user.id, edit=True)
+        return
+        items = await list_manual_requests_for_user(call.from_user.id, page=0, limit=REQUESTS_PAGE_SIZE)
         text = "🧾 <b>Мои заявки</b>\n\n"
         if not items:
             await call.message.edit_text(text + "Заявок пока нет.")
@@ -169,17 +244,30 @@ async def on_my_requests_callback(call: CallbackQuery) -> None:
         await call.message.edit_text(text + "Выберите заявку:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
+@router.callback_query(F.data.startswith("manual:my:"))
+async def on_my_requests_page_callback(call: CallbackQuery) -> None:
+    if call.from_user is None:
+        return
+    parts = (call.data or "").split(":", 2)
+    page = _safe_page(parts[2] if len(parts) > 2 else 0)
+    await call.answer()
+    if call.message:
+        await _show_my_requests_page(call.message, call.from_user.id, page=page, edit=True)
+
+
 @router.callback_query(F.data.startswith("manual:view:"))
 async def on_my_request_detail(call: CallbackQuery) -> None:
     if call.from_user is None:
         return
-    payment_id = call.data.split(":", 2)[2]
+    parts = (call.data or "").split(":")
+    payment_id = parts[2] if len(parts) > 2 else ""
+    page = _safe_page(parts[3] if len(parts) > 3 else 0)
     item = await get_pending(payment_id)
     if item is None or item.get("user_id") != call.from_user.id or item.get("user_hidden") is True:
         await call.answer("Заявка не найдена", show_alert=True)
         return
     await call.answer()
-    await _show_request_detail(call, item)
+    await _show_request_detail_page(call, item, page=page)
 
 
 @router.callback_query(F.data.startswith("manual:hide:"))

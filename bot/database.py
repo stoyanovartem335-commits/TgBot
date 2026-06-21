@@ -51,6 +51,8 @@ async def init_db() -> None:
     await _db.bot_pending_payments.create_index("user_id")
     await _db.bot_pending_payments.create_index("external_ref")
     await _db.bot_pending_payments.create_index([("user_id", 1), ("payment_method", 1), ("status", 1)])
+    await _db.bot_pending_payments.create_index([("user_id", 1), ("payment_method", 1), ("user_hidden", 1), ("_id", -1)])
+    await _db.bot_pending_payments.create_index([("payment_method", 1), ("_id", -1)])
     await _db.bot_payment_blocks.create_index([("user_id", 1), ("payment_method", 1)], unique=True)
     await _db.bot_payment_blocks.create_index("expires_at")
     await _db.bot_gsheets_requests.create_index("user_id")
@@ -210,27 +212,47 @@ async def get_active_manual_pending(user_id: int) -> dict | None:
     )
 
 
-async def list_manual_requests_for_user(user_id: int, limit: int = 10) -> list[dict]:
+def _manual_user_filter(user_id: int) -> dict:
+    return {
+        "user_id": user_id,
+        "payment_method": {"$in": ["funpay", "requisites"]},
+        "user_hidden": {"$ne": True},
+    }
+
+
+def _manual_admin_filter() -> dict:
+    return {"payment_method": {"$in": ["funpay", "requisites"]}}
+
+
+async def count_manual_requests_for_user(user_id: int) -> int:
     db = await get_db()
+    return await db.bot_pending_payments.count_documents(_manual_user_filter(user_id))
+
+
+async def list_manual_requests_for_user(user_id: int, *, page: int = 0, limit: int = 10) -> list[dict]:
+    db = await get_db()
+    page = max(0, page)
+    limit = max(1, min(limit, 50))
     cursor = db.bot_pending_payments.find(
-        {
-            "user_id": user_id,
-            "payment_method": {"$in": ["funpay", "requisites"]},
-            "user_hidden": {"$ne": True},
-        },
+        _manual_user_filter(user_id),
         sort=[("_id", -1)],
-        limit=limit,
-    )
+    ).skip(page * limit).limit(limit)
     return await cursor.to_list(length=limit)
 
 
-async def list_manual_payment_requests(limit: int = 30) -> list[dict]:
+async def count_manual_payment_requests() -> int:
     db = await get_db()
+    return await db.bot_pending_payments.count_documents(_manual_admin_filter())
+
+
+async def list_manual_payment_requests(*, page: int = 0, limit: int = 10) -> list[dict]:
+    db = await get_db()
+    page = max(0, page)
+    limit = max(1, min(limit, 50))
     cursor = db.bot_pending_payments.find(
-        {"payment_method": {"$in": ["funpay", "requisites"]}},
+        _manual_admin_filter(),
         sort=[("_id", -1)],
-        limit=limit,
-    )
+    ).skip(page * limit).limit(limit)
     return await cursor.to_list(length=limit)
 
 
