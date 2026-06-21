@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 
 from ..keyboards import main_menu_kb
 from ..services.settings_service import get_plans_from_settings, get_active_discount, apply_discount
@@ -17,6 +17,16 @@ WELCOME = (
     "• 📰 <b>Новости Рынка</b> — наш Telegram-канал\n"
     "• 💬 <b>Тех поддержка</b> — связаться с админом"
 )
+
+
+async def send_main_menu(message: Message, text: str, *, reset_keyboard: bool = False) -> None:
+    if reset_keyboard:
+        reset_msg = await message.answer("Обновляю панель кнопок...", reply_markup=ReplyKeyboardRemove())
+        try:
+            await reset_msg.delete()
+        except Exception:
+            pass
+    await message.answer(text, reply_markup=main_menu_kb())
 
 
 @router.message(CommandStart())
@@ -44,9 +54,9 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
             await message.answer(text, reply_markup=payment_methods_kb(plan_code))
             return
 
-    await message.answer(WELCOME, reply_markup=main_menu_kb())
+    await send_main_menu(message, WELCOME, reset_keyboard=True)
 
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message) -> None:
-    await message.answer("Меню обновлено.", reply_markup=main_menu_kb())
+    await send_main_menu(message, "Меню обновлено.", reset_keyboard=True)

@@ -4,7 +4,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
 
 from ..config import TG_CHANNEL_URL, support_url
-from ..keyboards import BTN_NEWS, BTN_SUPPORT, BTN_MAIN, news_link_kb, support_link_kb
+from ..keyboards import BTN_NEWS, BTN_SUPPORT, BTN_MAIN, main_menu_kb
 
 router = Router(name="menu")
 
@@ -14,7 +14,7 @@ async def on_news(message: Message) -> None:
     await message.answer(
         "📰 <b>Новости Рынка</b>\n\n"
         f"Свежие новости — в нашем Telegram-канале:\n{TG_CHANNEL_URL}",
-        reply_markup=news_link_kb(),
+        reply_markup=main_menu_kb(),
         disable_web_page_preview=False,
     )
 
@@ -24,14 +24,14 @@ async def on_support(message: Message) -> None:
     await message.answer(
         "💬 <b>Тех поддержка</b>\n\n"
         f"По любым вопросам — напишите нам:\n{support_url()}",
-        reply_markup=support_link_kb(),
+        reply_markup=main_menu_kb(),
         disable_web_page_preview=True,
     )
 
 
 @router.message(F.text == BTN_MAIN)
 async def on_main(message: Message) -> None:
-    pass
+    await message.answer("Откройте витрину через кнопку в панели ниже.", reply_markup=main_menu_kb())
 
 
 @router.callback_query(F.data == "pay:cancel")

@@ -7,6 +7,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     WebAppInfo,
 )
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from .config import TG_CHANNEL_URL, WEBAPP_URL, support_url
 
@@ -16,12 +17,12 @@ BTN_SUPPORT = "💬 Тех поддержка"
 
 
 def main_menu_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=BTN_MAIN, web_app=WebAppInfo(url=f"{WEBAPP_URL}/"))],
-            [KeyboardButton(text=BTN_NEWS), KeyboardButton(text=BTN_SUPPORT)],
-        ],
-        one_time_keyboard=True,
+    builder = ReplyKeyboardBuilder()
+    builder.add(KeyboardButton(text=BTN_MAIN, web_app=WebAppInfo(url=f"{WEBAPP_URL}/")))
+    builder.button(text=BTN_NEWS)
+    builder.button(text=BTN_SUPPORT)
+    builder.adjust(1, 2)
+    return builder.as_markup(
         resize_keyboard=True,
         input_field_placeholder="Выберите действие",
     )
