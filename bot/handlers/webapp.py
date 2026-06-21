@@ -41,5 +41,5 @@ async def on_webapp_data(message: Message) -> None:
 
     await message.answer(
         selected_plan_text(plan_label, price_rub, price_stars, "💰"),
-        reply_markup=payment_methods_kb(plan_label),
+        reply_markup=payment_methods_kb(plan_code),
     )

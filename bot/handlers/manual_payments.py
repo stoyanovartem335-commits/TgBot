@@ -15,16 +15,17 @@ from ..database import (
     get_active_manual_pending,
     get_active_payment_block,
     get_pending,
+    get_settings,
+    list_manual_requests_for_user,
     mark_pending_status,
     set_payment_block,
     update_pending_fields,
 )
-from ..keyboards import BTN_PAY_FUNPAY, BTN_PAY_REQUISITES, main_menu_kb
+from ..keyboards import BTN_MY_REQUESTS, BTN_PAY_FUNPAY, BTN_PAY_REQUISITES, main_menu_kb
 from ..services.delivery import deliver_purchase
 from ..services.payment_review import format_until, method_label, parse_block_duration, user_full_name, user_ref_html
 from ..services.plans import PLAN_DAYS, PLAN_LABELS, plan_code_by_label
 from ..services.settings_service import price_with_active_discount
-from ..database import get_settings
 
 router = Router(name="manual_payments")
 
@@ -90,8 +91,155 @@ async def _block_text(user_id: int, method: str) -> str | None:
     )
 
 
-async def _start_manual_payment(message: Message, method: str, plan_code: str) -> None:
-    user = message.from_user
+def _request_title(item: dict) -> str:
+    method = method_label(item.get("payment_method", "?"))
+    plan = PLAN_LABELS.get(item.get("plan_code"), item.get("plan_code", "?"))
+    status = _status_label(item.get("status", "?"))
+    return f"{method} | {plan} | {status}"
+
+
+def _request_detail_text(item: dict) -> str:
+    method = item.get("payment_method", "?")
+    plan_code = item.get("plan_code", "?")
+    text = (
+        "🧾 <b>Заявка на оплату</b>\n\n"
+        f"Способ: <b>{method_label(method)}</b>\n"
+        f"Тариф: <b>{PLAN_LABELS.get(plan_code, plan_code)}</b>\n"
+        f"Сумма: <b>{item.get('amount_rub', 0)} ₽</b>\n"
+        f"Статус: <b>{_status_label(item.get('status', '?'))}</b>\n"
+        f"ID: <code>{html.escape(item.get('payment_id', ''))}</code>"
+    )
+    if item.get("payer_name"):
+        text += f"\nПлательщик: <b>{html.escape(item.get('payer_name'))}</b>"
+    return text
+
+
+async def _show_my_requests(target: Message, user_id: int, *, notice: str | None = None) -> None:
+    items = await list_manual_requests_for_user(user_id)
+    text = ""
+    if notice:
+        text += f"{notice}\n\n"
+    text += "🧾 <b>Мои заявки</b>\n\n"
+    if not items:
+        await target.answer(text + "Заявок пока нет.", reply_markup=main_menu_kb())
+        return
+    rows = [
+        [InlineKeyboardButton(text=_request_title(item), callback_data=f"manual:view:{item['payment_id']}")]
+        for item in items
+    ]
+    await target.answer(text + "Выберите заявку:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+async def _show_request_detail(call: CallbackQuery, item: dict) -> None:
+    payment_id = item["payment_id"]
+    status = item.get("status")
+    rows = []
+    if status in {"pending", "pending_review"}:
+        rows.append([InlineKeyboardButton(text="✏️ Изменить скриншот", callback_data=f"manual:edit:{payment_id}")])
+        rows.append([InlineKeyboardButton(text="↩️ Отменить заявку", callback_data=f"manual:cancel:{payment_id}")])
+    else:
+        rows.append([InlineKeyboardButton(text="🗑 Скрыть из списка", callback_data=f"manual:hide:{payment_id}")])
+    rows.append([InlineKeyboardButton(text="↩️ К моим заявкам", callback_data="manual:my")])
+    if call.message:
+        await call.message.edit_text(_request_detail_text(item), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.message(F.text == BTN_MY_REQUESTS)
+async def on_my_requests_message(message: Message) -> None:
+    if message.from_user is None:
+        return
+    await _show_my_requests(message, message.from_user.id)
+
+
+@router.callback_query(F.data == "manual:my")
+async def on_my_requests_callback(call: CallbackQuery) -> None:
+    if call.from_user is None:
+        return
+    await call.answer()
+    if call.message:
+        items = await list_manual_requests_for_user(call.from_user.id)
+        text = "🧾 <b>Мои заявки</b>\n\n"
+        if not items:
+            await call.message.edit_text(text + "Заявок пока нет.")
+            return
+        rows = [
+            [InlineKeyboardButton(text=_request_title(item), callback_data=f"manual:view:{item['payment_id']}")]
+            for item in items
+        ]
+        await call.message.edit_text(text + "Выберите заявку:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("manual:view:"))
+async def on_my_request_detail(call: CallbackQuery) -> None:
+    if call.from_user is None:
+        return
+    payment_id = call.data.split(":", 2)[2]
+    item = await get_pending(payment_id)
+    if item is None or item.get("user_id") != call.from_user.id or item.get("user_hidden") is True:
+        await call.answer("Заявка не найдена", show_alert=True)
+        return
+    await call.answer()
+    await _show_request_detail(call, item)
+
+
+@router.callback_query(F.data.startswith("manual:hide:"))
+async def on_my_request_hide(call: CallbackQuery) -> None:
+    if call.from_user is None:
+        return
+    payment_id = call.data.split(":", 2)[2]
+    item = await get_pending(payment_id)
+    if item is None or item.get("user_id") != call.from_user.id:
+        await call.answer("Заявка не найдена", show_alert=True)
+        return
+    if item.get("status") in {"pending", "pending_review"}:
+        await call.answer("Сначала отмените активную заявку", show_alert=True)
+        return
+    await update_pending_fields(payment_id, {"user_hidden": True})
+    await call.answer("Скрыто")
+    if call.message:
+        await call.message.edit_text("Заявка скрыта из вашего списка.")
+
+
+@router.callback_query(F.data.startswith("manual:edit:"))
+async def on_my_request_edit(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user is None:
+        return
+    payment_id = call.data.split(":", 2)[2]
+    item = await get_pending(payment_id)
+    if item is None or item.get("user_id") != call.from_user.id:
+        await call.answer("Заявка не найдена", show_alert=True)
+        return
+    if item.get("status") not in {"pending", "pending_review"}:
+        await call.answer("Эту заявку уже нельзя редактировать", show_alert=True)
+        return
+    await update_pending_fields(payment_id, {"status": "pending"})
+    await state.update_data(payment_id=payment_id)
+    await call.answer()
+    if item.get("payment_method") == "requisites" and not item.get("payer_name"):
+        await state.set_state(ManualPaymentFSM.waiting_requisites_payer)
+        if call.message:
+            await call.message.answer("Напишите имя и фамилию плательщика.")
+        return
+    if item.get("payment_method") == "requisites":
+        await state.set_state(ManualPaymentFSM.waiting_requisites_screenshot)
+    else:
+        await state.set_state(ManualPaymentFSM.waiting_funpay_screenshot)
+    if call.message:
+        await call.message.answer("Пришлите новый скриншот оплаты одним изображением.")
+
+
+def _status_label(status: str) -> str:
+    return {
+        "pending": "ожидает скриншот",
+        "pending_review": "на проверке",
+        "completed": "принята",
+        "rejected": "отклонена",
+        "canceled": "отменена",
+        "failed": "ошибка",
+    }.get(status, status or "?")
+
+
+async def _start_manual_payment(message: Message, user, method: str, plan_code: str) -> None:
     if user is None:
         return
 
@@ -155,7 +303,16 @@ async def on_funpay_selected(message: Message) -> None:
     if plan_code is None:
         await message.answer("Тариф не найден. Откройте витрину и выберите тариф заново.", reply_markup=main_menu_kb())
         return
-    await _start_manual_payment(message, "funpay", plan_code)
+    await _start_manual_payment(message, message.from_user, "funpay", plan_code)
+
+
+@router.callback_query(F.data.startswith("pay:funpay:"))
+async def on_funpay_selected_inline(call: CallbackQuery) -> None:
+    if call.message is None or call.from_user is None:
+        return
+    plan_code = call.data.split(":", 2)[2]
+    await call.answer()
+    await _start_manual_payment(call.message, call.from_user, "funpay", plan_code)
 
 
 @router.message(F.text.startswith(BTN_PAY_REQUISITES))
@@ -166,7 +323,16 @@ async def on_requisites_selected(message: Message) -> None:
     if plan_code is None:
         await message.answer("Тариф не найден. Откройте витрину и выберите тариф заново.", reply_markup=main_menu_kb())
         return
-    await _start_manual_payment(message, "requisites", plan_code)
+    await _start_manual_payment(message, message.from_user, "requisites", plan_code)
+
+
+@router.callback_query(F.data.startswith("pay:requisites:"))
+async def on_requisites_selected_inline(call: CallbackQuery) -> None:
+    if call.message is None or call.from_user is None:
+        return
+    plan_code = call.data.split(":", 2)[2]
+    await call.answer()
+    await _start_manual_payment(call.message, call.from_user, "requisites", plan_code)
 
 
 @router.callback_query(F.data.startswith("manual:cancel:"))
@@ -178,14 +344,17 @@ async def on_manual_cancel(call: CallbackQuery, state: FSMContext) -> None:
     if pending is None or pending.get("user_id") != call.from_user.id:
         await call.answer("Заявка не найдена", show_alert=True)
         return
-    if pending.get("status") != "pending":
-        await call.answer("Заявка уже отправлена на проверку", show_alert=True)
+    if pending.get("status") not in {"pending", "pending_review"}:
+        await call.answer("Эта заявка уже обработана", show_alert=True)
         return
     await mark_pending_status(payment_id, "canceled")
     await state.clear()
     await call.answer("Заявка отменена")
     if call.message:
-        await call.message.edit_reply_markup(reply_markup=None)
+        try:
+            await call.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
         await call.message.answer("Заявка отменена. Можно выбрать тариф заново.", reply_markup=main_menu_kb())
 
 

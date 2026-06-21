@@ -204,9 +204,34 @@ async def get_active_manual_pending(user_id: int) -> dict | None:
             "user_id": user_id,
             "payment_method": {"$in": ["funpay", "requisites"]},
             "status": {"$in": ["pending", "pending_review"]},
+            "user_hidden": {"$ne": True},
         },
         sort=[("_id", -1)],
     )
+
+
+async def list_manual_requests_for_user(user_id: int, limit: int = 10) -> list[dict]:
+    db = await get_db()
+    cursor = db.bot_pending_payments.find(
+        {
+            "user_id": user_id,
+            "payment_method": {"$in": ["funpay", "requisites"]},
+            "user_hidden": {"$ne": True},
+        },
+        sort=[("_id", -1)],
+        limit=limit,
+    )
+    return await cursor.to_list(length=limit)
+
+
+async def list_manual_payment_requests(limit: int = 30) -> list[dict]:
+    db = await get_db()
+    cursor = db.bot_pending_payments.find(
+        {"payment_method": {"$in": ["funpay", "requisites"]}},
+        sort=[("_id", -1)],
+        limit=limit,
+    )
+    return await cursor.to_list(length=limit)
 
 
 def _parse_iso_dt(value: str | None) -> datetime | None:

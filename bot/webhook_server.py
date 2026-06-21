@@ -159,7 +159,7 @@ async def select_plan_api_handler(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "bot instance not found"}, status=500)
 
     try:
-        await bot.send_message(user_id, text, reply_markup=payment_methods_kb(plan["label"]))
+        await bot.send_message(user_id, text, reply_markup=payment_methods_kb(plan_code))
         from .config import BOT_USERNAME
         return web.json_response({"ok": True, "bot_url": f"https://t.me/{BOT_USERNAME}"})
     except Exception as exc:

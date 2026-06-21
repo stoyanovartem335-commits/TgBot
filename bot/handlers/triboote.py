@@ -156,6 +156,25 @@ async def complete_from_tribute_event(bot: Bot, data: dict[str, Any]) -> bool:
     status = str(payload.get("status") or data.get("status") or "").lower()
     payment_id = _first_value(payload, data, "uuid", "external_id", "payment_id", "id")
     if status in {"paid", "succeeded", "success", "completed", "payment.success"} and payment_id:
+        user_id = _extract_telegram_user_id(payload)
+        plan_code = await _resolve_plan_code(payload)
+        if user_id > 0 and plan_code in PLAN_CODES and _is_allowed_tribute_subject(payload):
+            event_id = f"tribute:payment:{payment_id}"
+            await create_pending(
+                payment_id=event_id,
+                user_id=user_id,
+                username=str(payload.get("telegram_username") or payload.get("username") or "") or None,
+                plan_code=plan_code,
+                payment_method="triboote",
+                external_ref=str(payment_id),
+            )
+            pending = await get_pending(event_id)
+            if pending is None:
+                return False
+            return await _complete_pending(bot, pending, renew=False, expires_at_override=_extract_expires_at(payload))
+        if _has_plan_signal(payload):
+            log.warning("Tribute paid event has plan signal but cannot map plan safely: %s", payload)
+            return False
         return await complete_from_webhook(bot, str(payment_id))
 
     log.info("Tribute webhook ignored name=%s status=%s payload=%s", name, status, payload)
@@ -181,6 +200,9 @@ async def _complete_subscription_event(
 
     plan_code = await _resolve_plan_code(payload)
     if plan_code is None:
+        if _has_plan_signal(payload):
+            log.warning("Tribute subscription has plan signal but cannot map plan safely: %s", payload)
+            return False
         latest_pending = await get_latest_pending_for_user(user_id=user_id, payment_method="triboote")
         if latest_pending is not None:
             plan_code = latest_pending.get("plan_code")
@@ -253,19 +275,45 @@ async def _resolve_plan_code(payload: dict[str, Any]) -> str | None:
             if str(configured_id).strip() == period_id:
                 return code
 
-    product_name = str(
-        payload.get("product_name")
-        or payload.get("period_name")
-        or payload.get("tariff_name")
-        or payload.get("title")
-        or ""
-    ).strip()
+    product_name = _extract_plan_name(payload)
     if product_name:
         plan_from_name = _plan_from_name(product_name)
         if plan_from_name:
             return plan_from_name
 
     return await _plan_from_amount(payload)
+
+
+def _has_plan_signal(payload: dict[str, Any]) -> bool:
+    return bool(_extract_period_id(payload) or _extract_plan_name(payload) or _extract_amount(payload) > 0)
+
+
+def _extract_plan_name(payload: dict[str, Any]) -> str:
+    values = (
+        payload.get("product_name"),
+        payload.get("period_name"),
+        payload.get("tariff_name"),
+        payload.get("plan_name"),
+        payload.get("title"),
+        payload.get("name"),
+    )
+    for nested_key in ("period", "tariff", "plan", "product", "subscription"):
+        nested = payload.get(nested_key)
+        if isinstance(nested, dict):
+            values = (
+                *values,
+                nested.get("product_name"),
+                nested.get("period_name"),
+                nested.get("tariff_name"),
+                nested.get("plan_name"),
+                nested.get("title"),
+                nested.get("name"),
+            )
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
 
 
 def _extract_payload(data: dict[str, Any]) -> dict[str, Any]:

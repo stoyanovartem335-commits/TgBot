@@ -37,7 +37,7 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
 
             await message.answer(
                 selected_plan_text(plan["label"], price_rub, price_stars),
-                reply_markup=payment_methods_kb(plan["label"]),
+                reply_markup=payment_methods_kb(plan_code),
             )
             return
 

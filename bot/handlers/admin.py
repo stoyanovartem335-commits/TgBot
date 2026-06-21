@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import logging
 from datetime import datetime, timezone
 
@@ -13,9 +14,11 @@ from ..config import ADMIN_ID
 from ..database import (
     delete_payment_block,
     get_active_payment_block,
+    get_pending,
     get_recent_purchases,
     get_settings,
     list_active_payment_blocks,
+    list_manual_payment_requests,
     set_payment_block,
     get_total_purchases,
     update_settings,
@@ -65,6 +68,7 @@ def _admin_main_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="💰 Настроить цены", callback_data="adm:prices")],
         [InlineKeyboardButton(text="🎁 Акция / Промо", callback_data="adm:promo")],
         [InlineKeyboardButton(text="📈 Статистика", callback_data="adm:stats")],
+        [InlineKeyboardButton(text="🧾 Заявки оплат", callback_data="adm:payment_requests")],
         [InlineKeyboardButton(text="⛔ Баны оплат", callback_data="adm:payment_bans")],
         [InlineKeyboardButton(text="🏆 Популярный тариф", callback_data="adm:settings")],
     ])
@@ -235,6 +239,75 @@ async def show_stats_panel(message: Message | None) -> None:
         text += "Покупок пока нет."
     kb = InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]])
     await _edit_or_send(message, text, kb)
+
+
+def _request_status_label(status: str) -> str:
+    return {
+        "pending": "ожидает скриншот",
+        "pending_review": "на проверке",
+        "completed": "принята",
+        "rejected": "отклонена",
+        "canceled": "отменена",
+        "failed": "ошибка",
+    }.get(status, status or "?")
+
+
+def _request_button_title(item: dict) -> str:
+    method = method_label(item.get("payment_method", "?"))
+    plan = PLAN_LABELS.get(item.get("plan_code"), item.get("plan_code", "?"))
+    status = _request_status_label(item.get("status", "?"))
+    user = item.get("username") or item.get("full_name") or item.get("user_id")
+    return f"{status} | {method} | {plan} | {user}"
+
+
+async def show_payment_requests_panel(message: Message | None, *, notice: str | None = None) -> None:
+    items = await list_manual_payment_requests()
+    text = ""
+    if notice:
+        text += f"{notice}\n\n"
+    text += "🧾 <b>Заявки оплат</b>\n\n"
+    if not items:
+        text += "Заявок пока нет."
+        await _edit_or_send(message, text, InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]]))
+        return
+    rows = [
+        [InlineKeyboardButton(text=_request_button_title(item), callback_data=f"adm:req:{item['payment_id']}")]
+        for item in items
+    ]
+    rows.append([_back_kb()])
+    await _edit_or_send(message, text + "Последние заявки:", InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+async def show_payment_request_detail(message: Message | None, item: dict, *, notice: str | None = None) -> None:
+    payment_id = item["payment_id"]
+    method = item.get("payment_method", "?")
+    plan_code = item.get("plan_code", "?")
+    text = ""
+    if notice:
+        text += f"{notice}\n\n"
+    text += (
+        "🧾 <b>Заявка оплаты</b>\n\n"
+        f"Способ: <b>{method_label(method)}</b>\n"
+        f"Тариф: <b>{PLAN_LABELS.get(plan_code, plan_code)}</b>\n"
+        f"Сумма: <b>{item.get('amount_rub', 0)} ₽</b>\n"
+        f"Статус: <b>{_request_status_label(item.get('status', '?'))}</b>\n"
+        f"Пользователь: {user_ref_html(int(item.get('user_id', 0)), item.get('full_name'), item.get('username'))}\n"
+    )
+    if item.get("payer_name"):
+        text += f"Плательщик: <b>{html.escape(str(item.get('payer_name')))}</b>\n"
+    text += f"Payment ID: <code>{html.escape(payment_id)}</code>"
+
+    rows = []
+    if item.get("proof_file_id"):
+        rows.append([InlineKeyboardButton(text="🖼 Показать скриншот", callback_data=f"adm:req_photo:{payment_id}")])
+    if item.get("status") == "pending_review":
+        rows.append([
+            InlineKeyboardButton(text="✅ Принять", callback_data=f"manual:ok:{payment_id}"),
+            InlineKeyboardButton(text="❌ Отказать", callback_data=f"manual:no:{payment_id}"),
+        ])
+        rows.append([InlineKeyboardButton(text="⛔ Заблокировать способ", callback_data=f"manual:block:{payment_id}")])
+    rows.append([InlineKeyboardButton(text="↩️ К заявкам", callback_data="adm:payment_requests")])
+    await _edit_or_send(message, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _block_button_title(block: dict) -> str:
@@ -475,6 +548,43 @@ async def adm_stats(call: CallbackQuery) -> None:
         return
     await call.answer()
     await show_stats_panel(call.message)
+
+
+@router.callback_query(F.data == "adm:payment_requests")
+async def adm_payment_requests(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    await call.answer()
+    await show_payment_requests_panel(call.message)
+
+
+@router.callback_query(F.data.startswith("adm:req:"))
+async def adm_payment_request_detail(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    payment_id = call.data.split(":", 2)[2]
+    item = await get_pending(payment_id)
+    if item is None:
+        await call.answer("Заявка не найдена", show_alert=True)
+        return
+    await call.answer()
+    await show_payment_request_detail(call.message, item)
+
+
+@router.callback_query(F.data.startswith("adm:req_photo:"))
+async def adm_payment_request_photo(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    payment_id = call.data.split(":", 2)[2]
+    item = await get_pending(payment_id)
+    if item is None or not item.get("proof_file_id"):
+        await call.answer("Скриншот не найден", show_alert=True)
+        return
+    await call.answer()
+    await call.message.answer_photo(
+        item["proof_file_id"],
+        caption=f"Скриншот по заявке <code>{payment_id}</code>",
+    )
 
 
 @router.callback_query(F.data == "adm:payment_bans")
