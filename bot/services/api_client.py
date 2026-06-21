@@ -1,37 +1,12 @@
 from __future__ import annotations
 
-import logging
-
-import aiohttp
-
-from ..config import API_ADMIN_TOKEN, API_SERVER_URL
-
-log = logging.getLogger(__name__)
-
 
 class ApiClientError(RuntimeError):
     pass
 
 
-_session: aiohttp.ClientSession | None = None
-
-
-async def get_session() -> aiohttp.ClientSession:
-    global _session
-    if _session is None or _session.closed:
-        connector = aiohttp.TCPConnector(limit=30, ttl_dns_cache=300)
-        _session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=15),
-            connector=connector,
-        )
-    return _session
-
-
 async def close_session() -> None:
-    global _session
-    if _session is not None and not _session.closed:
-        await _session.close()
-    _session = None
+    return None
 
 
 async def create_subscription_token(
@@ -42,36 +17,19 @@ async def create_subscription_token(
     subscription_expiration: str | None = None,
     hwid: str | None = None,
 ) -> str:
-    payload = {
-        "admin_token": API_ADMIN_TOKEN,
-        "key_part2": key_part2,
-        "client_id": client_id,
-        "public": is_public,
-        "subscription_expiration": subscription_expiration,
-        "hwid": hwid,
-    }
-    session = await get_session()
-    async with session.post(
-        f"{API_SERVER_URL}/api/CreateSubscriptionToken",
-        json=payload,
-    ) as resp:
-        text = await resp.text()
-        if resp.status >= 400:
-            log.error("API server error: %s %s", resp.status, text)
-            raise ApiClientError(f"API server returned {resp.status}: {text[:200]}")
-        try:
-            data = await resp.json(content_type=None)
-        except Exception as exc:
-            raise ApiClientError(f"Invalid API response: {exc}") from exc
-        if data.get("status") != "ok":
-            raise ApiClientError(f"API error: {data.get('message', 'unknown')}")
-        return key_part2
+    try:
+        from ..api_server import create_subscription_token_record
+
+        return await create_subscription_token_record(
+            key_part2=key_part2,
+            client_id=client_id,
+            is_public=is_public,
+            subscription_expiration=subscription_expiration,
+            hwid=hwid,
+        )
+    except ValueError as exc:
+        raise ApiClientError(str(exc)) from exc
 
 
 async def verify_api_connection() -> bool:
-    try:
-        session = await get_session()
-        async with session.get(f"{API_SERVER_URL}/api/health") as resp:
-            return resp.status == 200
-    except Exception:
-        return False
+    return True

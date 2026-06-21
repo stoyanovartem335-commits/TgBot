@@ -20,6 +20,12 @@ async def get_db() -> AsyncIOMotorDatabase:
     return _db
 
 
+def get_collection(name: str):
+    if _db is None:
+        raise RuntimeError("MongoDB not initialized")
+    return _db.get_collection(name)
+
+
 async def init_db() -> None:
     global _client, _db
     _client = AsyncIOMotorClient(

@@ -10,9 +10,12 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from ..config import (
     ADMIN_ID,
+    TG_CHANNEL_URL,
+    TRIBUTE_ALLOWED_CHANNEL_IDS,
+    TRIBUTE_ALLOWED_CHANNEL_NAMES,
+    TRIBUTE_ALLOWED_SUBSCRIPTION_IDS,
     TRIBUTE_PAYMENT_MODE,
-    TRIBUTE_PRODUCT_IDS,
-    TRIBUTE_PRODUCT_NAMES,
+    TRIBUTE_PERIOD_IDS,
     TRIBUTE_PRODUCT_URLS,
 )
 from ..database import (
@@ -160,9 +163,14 @@ async def complete_from_tribute_event(bot: Bot, data: dict[str, Any]) -> bool:
     name = str(data.get("name") or data.get("event") or "").lower()
     payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
 
+    if name in {"new_subscription", "renewed_subscription"}:
+        return await _complete_subscription_event(bot, name, payload, data)
+    if name in {"cancelled_subscription", "shop_order_cancelled", "shop_order_charge_failed", "cancelled_donation"}:
+        log.info("Tribute non-delivery event accepted name=%s payload=%s", name, payload)
+        return True
     if name == "new_digital_product":
         return await _complete_digital_product(bot, payload)
-    if name == "shop_order":
+    if name in {"shop_order", "shop_order_charge_success"}:
         return await _complete_shop_order(bot, payload)
     if name == "digital_product_refunded":
         await _handle_digital_refund(payload)
@@ -186,7 +194,7 @@ async def complete_from_tribute_event(bot: Bot, data: dict[str, Any]) -> bool:
 
 
 async def _complete_shop_order(bot: Bot, payload: dict[str, Any]) -> bool:
-    if str(payload.get("status") or "").lower() != "paid":
+    if str(payload.get("status") or "paid").lower() != "paid":
         return True
 
     order_uuid = str(payload.get("uuid") or "")
@@ -201,7 +209,49 @@ async def _complete_shop_order(bot: Bot, payload: dict[str, Any]) -> bool:
     return await _complete_pending(bot, pending)
 
 
+async def _complete_subscription_event(bot: Bot, name: str, payload: dict[str, Any], data: dict[str, Any]) -> bool:
+    if not _is_allowed_tribute_subject(payload):
+        log.warning("Tribute subscription ignored by channel/subscription filter: %s", payload)
+        return False
+
+    try:
+        user_id = int(payload.get("telegram_user_id") or 0)
+    except (TypeError, ValueError):
+        user_id = 0
+    if user_id <= 0:
+        log.warning("Tribute subscription without telegram_user_id: %s", payload)
+        return False
+
+    plan_code = await _resolve_plan_code(payload)
+    if plan_code is None:
+        latest_pending = await get_latest_pending_for_user(user_id=user_id, payment_method="triboote")
+        if latest_pending is not None:
+            plan_code = latest_pending.get("plan_code")
+
+    if plan_code not in PLAN_CODES:
+        log.warning("Tribute subscription cannot map plan: %s", payload)
+        return False
+
+    event_id = _subscription_event_id(name, payload, data)
+    await create_pending(
+        payment_id=event_id,
+        user_id=user_id,
+        username=payload.get("telegram_username"),
+        plan_code=plan_code,
+        payment_method="triboote",
+        external_ref=_subscription_external_ref(payload),
+    )
+    pending = await get_pending(event_id)
+    if pending is None:
+        return False
+    return await _complete_pending(bot, pending)
+
+
 async def _complete_digital_product(bot: Bot, payload: dict[str, Any]) -> bool:
+    if not _is_allowed_tribute_subject(payload):
+        log.warning("Tribute digital product ignored by channel/subscription filter: %s", payload)
+        return False
+
     try:
         user_id = int(payload.get("telegram_user_id") or 0)
     except (TypeError, ValueError):
@@ -270,10 +320,10 @@ async def _complete_pending(bot: Bot, pending: dict) -> bool:
 
 
 async def _resolve_plan_code(payload: dict[str, Any]) -> str | None:
-    product_id = str(payload.get("product_id") or "").strip()
-    if product_id:
-        for code, configured_id in TRIBUTE_PRODUCT_IDS.items():
-            if str(configured_id).strip() == product_id:
+    period_id = str(payload.get("period_id") or "").strip()
+    if period_id:
+        for code, configured_id in TRIBUTE_PERIOD_IDS.items():
+            if str(configured_id).strip() == period_id:
                 return code
 
     web_app_link = str(payload.get("web_app_link") or payload.get("link") or "").strip()
@@ -285,14 +335,36 @@ async def _resolve_plan_code(payload: dict[str, Any]) -> str | None:
 
     product_name = str(payload.get("product_name") or payload.get("title") or "").strip()
     if product_name:
-        for code, configured_name in TRIBUTE_PRODUCT_NAMES.items():
-            if configured_name and configured_name.strip().casefold() == product_name.casefold():
-                return code
         plan_from_name = _plan_from_name(product_name)
         if plan_from_name:
             return plan_from_name
 
     return await _plan_from_amount(payload)
+
+
+def _is_allowed_tribute_subject(payload: dict[str, Any]) -> bool:
+    channel_id = str(payload.get("channel_id") or "").strip()
+    if TRIBUTE_ALLOWED_CHANNEL_IDS and channel_id and channel_id not in TRIBUTE_ALLOWED_CHANNEL_IDS:
+        return False
+
+    channel_name = _normalize_subject_name(str(payload.get("channel_name") or ""))
+    allowed_names = {_normalize_subject_name(value) for value in TRIBUTE_ALLOWED_CHANNEL_NAMES}
+    tg_slug = _telegram_slug(TG_CHANNEL_URL)
+    if tg_slug:
+        allowed_names.add(_normalize_subject_name(tg_slug))
+    if allowed_names and channel_name and channel_name not in allowed_names:
+        return False
+
+    subscription_id = str(payload.get("subscription_id") or "").strip()
+    if TRIBUTE_ALLOWED_SUBSCRIPTION_IDS and subscription_id and subscription_id not in TRIBUTE_ALLOWED_SUBSCRIPTION_IDS:
+        return False
+
+    period_id = str(payload.get("period_id") or "").strip()
+    allowed_period_ids = {str(value).strip() for value in TRIBUTE_PERIOD_IDS.values() if str(value).strip()}
+    if allowed_period_ids and period_id and period_id not in allowed_period_ids:
+        return False
+
+    return True
 
 
 async def _plan_from_amount(payload: dict[str, Any]) -> str | None:
@@ -327,6 +399,46 @@ def _plan_from_name(name: str) -> str | None:
 
 def _normalize_url(value: str) -> str:
     return value.strip().rstrip("/")
+
+
+def _normalize_subject_name(value: str) -> str:
+    return value.strip().lstrip("@").casefold()
+
+
+def _telegram_slug(value: str) -> str:
+    raw = value.strip().rstrip("/")
+    if not raw:
+        return ""
+    return raw.rsplit("/", 1)[-1].lstrip("@")
+
+
+def _subscription_external_ref(payload: dict[str, Any]) -> str:
+    return ":".join([
+        "subscription",
+        str(payload.get("subscription_id") or ""),
+        str(payload.get("period_id") or ""),
+        str(payload.get("telegram_user_id") or ""),
+    ])
+
+
+def _subscription_event_id(name: str, payload: dict[str, Any], data: dict[str, Any]) -> str:
+    raw = (
+        payload.get("transaction_id")
+        or payload.get("payment_id")
+        or payload.get("invoice_id")
+        or payload.get("expires_at")
+        or data.get("created_at")
+        or data.get("sent_at")
+        or uuid.uuid4().hex
+    )
+    return (
+        "tribute:subscription:"
+        f"{name}:"
+        f"{payload.get('subscription_id') or ''}:"
+        f"{payload.get('period_id') or ''}:"
+        f"{payload.get('telegram_user_id') or ''}:"
+        f"{raw}"
+    )
 
 
 def _digital_event_id(payload: dict[str, Any]) -> str:

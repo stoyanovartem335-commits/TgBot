@@ -72,6 +72,44 @@
   var discountEnabled = false;
   var discountPct = 0;
 
+  var PLAN_META = {
+    '1m': {
+      tag: 'Старт',
+      title: '1 месяц',
+      term: '30 дней доступа',
+      note: 'Для первого знакомства с таблицей и скриптом.',
+      benefits: ['Личный токен доступа', 'Все обновления цен', 'Маркетплейс и средние цены']
+    },
+    '2m': {
+      tag: 'Баланс',
+      title: '2 месяца',
+      term: '60 дней доступа',
+      note: 'Удобно, если нужно спокойно протестировать связку.',
+      benefits: ['Экономия относительно 1 месяца', 'Поддержка обновлений', 'Доступ к Lua-функциям']
+    },
+    '3m': {
+      tag: 'Популярный',
+      title: '3 месяца',
+      term: '90 дней доступа',
+      note: 'Оптимальный тариф для регулярной работы.',
+      benefits: ['Лучшая цена на короткий срок', 'Полный набор инструментов', 'Подходит для активной перепродажи']
+    },
+    '6m': {
+      tag: 'Выгодно',
+      title: '6 месяцев',
+      term: '180 дней доступа',
+      note: 'Долгий доступ без лишних продлений.',
+      benefits: ['Максимальная выгода по сроку', 'Все будущие обновления', 'Стабильная работа на сезон']
+    },
+    'forever': {
+      tag: 'Навсегда',
+      title: 'Forever',
+      term: 'Бессрочный доступ',
+      note: 'Один раз оплатили и пользуетесь без продлений.',
+      benefits: ['Бессрочный токен', 'Все ключевые функции', 'Лучший вариант для постоянной работы']
+    }
+  };
+
   function togglePromoAdvantages(enabled) {
     document.querySelectorAll('[data-promo-only]').forEach(function (el) {
       el.hidden = !enabled;
@@ -115,6 +153,13 @@
     var fragment = document.createDocumentFragment();
     
     plans.forEach(function (plan) {
+      var meta = PLAN_META[plan.code] || {
+        tag: 'Тариф',
+        title: plan.label,
+        term: plan.description || 'Доступ к инструментам',
+        note: 'Полный доступ к таблице и скрипту.',
+        benefits: ['Личный токен доступа', 'Обновления цен', 'Поддержка']
+      };
       var wrapper = document.createElement('div');
       wrapper.className = 'plan-card';
       wrapper.setAttribute('data-animate', '');
@@ -124,37 +169,47 @@
       var inner = document.createElement('div');
       inner.className = 'plan-card__inner';
 
-      if (plan.highlighted) {
-        var badge = document.createElement('div');
-        badge.className = 'plan-card__badge';
-        badge.textContent = '⭐ Популярный';
-        inner.appendChild(badge);
-      }
+      var badge = document.createElement('div');
+      badge.className = 'plan-card__badge';
+      badge.textContent = meta.tag;
+      inner.appendChild(badge);
 
       var info = document.createElement('div');
       info.className = 'plan-card__info';
 
+      var top = document.createElement('div');
+      top.className = 'plan-card__top';
+
       var name = document.createElement('div');
       name.className = 'plan-card__name';
-      name.textContent = plan.label;
+      name.textContent = meta.title || plan.label;
       if (discountEnabled && discountPct > 0) {
         var inlineDisc = document.createElement('span');
         inlineDisc.className = 'plan-card__discount-inline';
         inlineDisc.textContent = '-' + discountPct + '%';
         name.appendChild(inlineDisc);
       }
-      info.appendChild(name);
+      top.appendChild(name);
 
-      if (plan.description) {
-        var desc = document.createElement('div');
-        desc.className = 'plan-card__desc';
-        var descText = plan.description;
-        if (plan.highlighted) {
-          descText = 'Доступ на 90 дней';
-        }
-        desc.textContent = descText;
-        info.appendChild(desc);
-      }
+      var term = document.createElement('div');
+      term.className = 'plan-card__term';
+      term.textContent = meta.term || plan.description || '';
+      top.appendChild(term);
+      info.appendChild(top);
+
+      var desc = document.createElement('div');
+      desc.className = 'plan-card__desc';
+      desc.textContent = meta.note || plan.description || '';
+      info.appendChild(desc);
+
+      var benefits = document.createElement('ul');
+      benefits.className = 'plan-card__benefits';
+      (meta.benefits || []).forEach(function (text) {
+        var item = document.createElement('li');
+        item.textContent = text;
+        benefits.appendChild(item);
+      });
+      info.appendChild(benefits);
 
       var priceWrap = document.createElement('div');
       priceWrap.className = 'plan-card__price-wrap';
@@ -202,6 +257,11 @@
         starsBlock.appendChild(priceStars);
       }
       priceWrap.appendChild(starsBlock);
+
+      var action = document.createElement('div');
+      action.className = 'plan-card__action';
+      action.textContent = 'Выбрать тариф';
+      priceWrap.appendChild(action);
 
       inner.appendChild(info);
       inner.appendChild(priceWrap);

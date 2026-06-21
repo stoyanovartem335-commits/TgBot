@@ -1,34 +1,63 @@
-﻿services:
+services:
   - type: web
-    name: kalivan-telegram-bot
+    name: tgbot-zcdz
     runtime: python
     plan: starter
     region: oregon
-
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python -m bot.main
-
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: "3.12"
+      - key: WEBAPP_URL
+        value: https://tgbot-zcdz.onrender.com
       - key: BOT_TOKEN
+        sync: false
+      - key: BOT_USERNAME
         sync: false
       - key: ADMIN_ID
         sync: false
-      - key: MONGO_URI
+      - key: SUPPORT_USERNAME
         sync: false
-      - key: API_SERVER_URL
+      - key: MONGO_URI
         sync: false
       - key: API_ADMIN_TOKEN
         sync: false
-      - key: WEBAPP_URL
+      - key: LUA_API_CRYPTO_MODE
+        value: "3"
+      - key: LUA_API_KEY_ID
         sync: false
-      - key: TRIBUTE_API_URL
-        value: https://tribute.tg/api/v1
+      - key: LUA_API_RSA_PRIVATE_JWK_B64
+        sync: false
+      - key: TABLE_CSV_URL
+        sync: false
+      - key: ANALOGUES_CSV_URL
+        sync: false
+      - key: CARS_CSV_URL
+        sync: false
       - key: TRIBUTE_API_KEY
         sync: false
       - key: TRIBUTE_PAYMENT_MODE
-        value: auto
+        value: api
+      - key: TRIBUTE_DEBUG_WEBHOOKS
+        value: "1"
+      - key: TRIBUTE_ALLOWED_CHANNEL_IDS
+        sync: false
+      - key: TRIBUTE_ALLOWED_CHANNEL_NAMES
+        sync: false
+      - key: TRIBUTE_ALLOWED_SUBSCRIPTION_IDS
+        sync: false
+      - key: TRIBUTE_PERIOD_ID_1M
+        sync: false
+      - key: TRIBUTE_PERIOD_ID_2M
+        sync: false
+      - key: TRIBUTE_PERIOD_ID_3M
+        sync: false
+      - key: TRIBUTE_PERIOD_ID_6M
+        sync: false
+      - key: TRIBUTE_PERIOD_ID_FOREVER
+        sync: false
       - key: TRIBUTE_PRODUCT_URL_1M
         sync: false
       - key: TRIBUTE_PRODUCT_URL_2M
@@ -39,25 +68,15 @@
         sync: false
       - key: TRIBUTE_PRODUCT_URL_FOREVER
         sync: false
-      - key: TRIBUTE_PRODUCT_ID_1M
-        sync: false
-      - key: TRIBUTE_PRODUCT_ID_2M
-        sync: false
-      - key: TRIBUTE_PRODUCT_ID_3M
-        sync: false
-      - key: TRIBUTE_PRODUCT_ID_6M
-        sync: false
-      - key: TRIBUTE_PRODUCT_ID_FOREVER
-        sync: false
       - key: TG_CHANNEL_URL
         sync: false
-      - key: SUPPORT_USERNAME
-        value: KalivanVC
       - key: REQUISITES_TEXT
-        value: Сбербанк
+        sync: false
       - key: REQUISITES_CARD
-        value: "2202 2020 2020 2020"
+        sync: false
       - key: REQUISITES_NAME
-        value: "Иван И."
-
-    healthCheckPath: /health
+        sync: false
+      - key: ZIP_FILE_PATH
+        value: ./Price_by_KALYVAN.zip
+      - key: ADMIN_WEB_SECRET_PATH
+        sync: false

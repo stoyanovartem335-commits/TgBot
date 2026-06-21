@@ -11,7 +11,6 @@ from ..config import (
     TRIBUTE_API_KEY,
     TRIBUTE_API_URL,
     TRIBUTE_CURRENCY,
-    TRIBUTE_PRODUCT_IDS,
     TRIBUTE_PRODUCT_URLS,
     WEBAPP_URL,
 )
@@ -129,4 +128,4 @@ def get_product_payment_url(plan_code: str) -> str | None:
 
 
 def get_product_ref(plan_code: str) -> str | None:
-    return TRIBUTE_PRODUCT_IDS.get(plan_code) or TRIBUTE_PRODUCT_URLS.get(plan_code)
+    return TRIBUTE_PRODUCT_URLS.get(plan_code)

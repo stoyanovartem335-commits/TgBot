@@ -1140,6 +1140,188 @@ img, video, canvas, svg {
   line-height: 1;
 }
 
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+.plan-card {
+  --plan-accent: var(--green-primary);
+  min-height: 100%;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.022)),
+    rgba(8, 14, 12, 0.94);
+  border: 1px solid rgba(255,255,255,0.09);
+  box-shadow: 0 18px 46px rgba(0,0,0,0.24);
+}
+
+.plan-card:nth-child(2) {
+  --plan-accent: var(--accent-cyan);
+}
+
+.plan-card:nth-child(4) {
+  --plan-accent: var(--accent-gold);
+}
+
+.plan-card:nth-child(5) {
+  --plan-accent: #b8ffdf;
+}
+
+.plan-card:hover {
+  border-color: color-mix(in srgb, var(--plan-accent) 48%, transparent);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.028)),
+    rgba(9, 17, 14, 0.96);
+  box-shadow: 0 20px 52px rgba(0,0,0,0.28), 0 0 28px color-mix(in srgb, var(--plan-accent) 12%, transparent);
+}
+
+.plan-card--highlighted {
+  padding: 1px;
+  border: 1px solid color-mix(in srgb, var(--green-primary) 48%, transparent);
+  background:
+    linear-gradient(135deg, rgba(0,255,136,0.46), rgba(68,215,255,0.32), rgba(255,209,102,0.24)),
+    rgba(8, 14, 12, 0.94);
+}
+
+.plan-card--highlighted::before {
+  border-radius: 8px;
+}
+
+.plan-card__inner,
+.plan-card--highlighted .plan-card__inner {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 7px;
+  background: rgba(5, 8, 7, 0.88);
+}
+
+.plan-card__inner::after,
+.plan-card--highlighted::before,
+.plan-card--highlighted .plan-card__inner::before {
+  border-radius: inherit;
+}
+
+.plan-card__badge {
+  position: static;
+  align-self: flex-start;
+  width: fit-content;
+  margin-bottom: 2px;
+  color: color-mix(in srgb, var(--plan-accent) 88%, white);
+  background: color-mix(in srgb, var(--plan-accent) 13%, transparent);
+  border-color: color-mix(in srgb, var(--plan-accent) 34%, transparent);
+}
+
+.plan-card__info {
+  gap: 13px;
+}
+
+.plan-card__top {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.plan-card__name {
+  font-size: 22px;
+  line-height: 1.12;
+}
+
+.plan-card__term {
+  color: color-mix(in srgb, var(--plan-accent) 84%, white);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.plan-card__desc {
+  min-height: 42px;
+  color: rgba(255,255,255,0.68);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.plan-card__benefits {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.plan-card__benefits li {
+  position: relative;
+  padding-left: 18px;
+  color: rgba(255,255,255,0.76);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.plan-card__benefits li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--plan-accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--plan-accent) 42%, transparent);
+}
+
+.plan-card__price-wrap {
+  align-items: stretch;
+  gap: 9px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.plan-card__price-block {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plan-card__price-block::before {
+  color: rgba(255,255,255,0.48);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.plan-card__price-block:nth-child(1)::before {
+  content: 'Рубли';
+}
+
+.plan-card__price-block:nth-child(2)::before {
+  content: 'Stars';
+}
+
+.plan-card__price {
+  color: color-mix(in srgb, var(--plan-accent) 86%, white);
+  font-size: 22px;
+}
+
+.plan-card__action {
+  display: grid;
+  place-items: center;
+  min-height: 42px;
+  margin-top: 5px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--plan-accent) 90%, white), color-mix(in srgb, var(--plan-accent) 68%, black));
+  color: #04110b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .footer {
   text-align: center;
   padding: 40px 0 20px;

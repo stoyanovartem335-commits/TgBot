@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import html
 import json
 import logging
 import os
@@ -14,12 +15,15 @@ from aiogram import Bot
 from aiohttp import web
 
 from .config import (
+    ADMIN_ID,
     ADMIN_WEB_SECRET_PATH,
-    TRIBUTE_WEBHOOK_SECRET,
+    TRIBUTE_API_KEY,
+    TRIBUTE_DEBUG_WEBHOOKS,
     WEB_HOST,
     WEB_PORT,
     WEBAPP_DIR,
 )
+from .api_server import setup_api_routes
 from .database import get_settings
 from .handlers.triboote import complete_from_tribute_event
 from .services.settings_service import get_plans_from_settings
@@ -198,17 +202,50 @@ async def triboote_fail_handler(request: web.Request) -> web.Response:
 
 
 def _verify_triboote_signature(body: bytes, header_sig: str | None) -> bool:
-    if not TRIBUTE_WEBHOOK_SECRET:
-        log.warning("TRIBUTE_API_KEY/TRIBUTE_WEBHOOK_SECRET not set - accepting Tribute webhook without verification")
-        return True
+    if not TRIBUTE_API_KEY:
+        log.error("TRIBUTE_API_KEY is not configured")
+        return False
     if not header_sig:
         return False
-    digest = hmac.new(TRIBUTE_WEBHOOK_SECRET.encode("utf-8"), body, sha256).digest()
+    digest = hmac.new(TRIBUTE_API_KEY.encode("utf-8"), body, sha256).digest()
     expected_hex = digest.hex()
     expected_b64 = base64.b64encode(digest).decode("ascii")
     candidate = header_sig.split("=", 1)[1] if "=" in header_sig else header_sig
     candidate = candidate.strip()
-    return hmac.compare_digest(expected_hex, candidate) or hmac.compare_digest(expected_b64, candidate)
+    return (
+        hmac.compare_digest(expected_hex, candidate.lower())
+        or hmac.compare_digest(expected_b64, candidate)
+    )
+
+
+def _is_tribute_test_event(data: dict) -> bool:
+    payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
+    name = str(data.get("name") or data.get("event") or "").lower()
+    if name in {"test", "ping", "webhook_test", "test_webhook"}:
+        return True
+    if data.get("test") is True or payload.get("test") is True:
+        return True
+    sample_markers = (
+        str(payload.get("telegram_user_id") or "") == "12321321",
+        str(payload.get("trb_user_id") or "") == "T-31326",
+        str(payload.get("product_id") or "") == "456",
+        str(payload.get("purchase_id") or "") == "78901",
+        str(payload.get("transaction_id") or "") == "234567",
+    )
+    return sum(1 for marker in sample_markers if marker) >= 2
+
+
+async def _send_admin_webhook_dump(bot: Bot, data: dict, reason: str) -> None:
+    try:
+        dump = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+        prefix = f"<b>Tribute webhook</b>\n{html.escape(reason)}\n\n"
+        max_chunk = 3200
+        chunks = [dump[i:i + max_chunk] for i in range(0, len(dump), max_chunk)] or ["{}"]
+        for index, chunk in enumerate(chunks, start=1):
+            title = prefix if index == 1 else f"<b>Tribute webhook</b> chunk {index}/{len(chunks)}\n\n"
+            await bot.send_message(ADMIN_ID, f"{title}<pre>{html.escape(chunk)}</pre>")
+    except Exception:
+        log.exception("Failed to send Tribute webhook dump to admin")
 
 
 def make_triboote_webhook_handler(bot: Bot):
@@ -229,11 +266,19 @@ def make_triboote_webhook_handler(bot: Bot):
         except json.JSONDecodeError:
             return web.Response(status=400, text="invalid json")
 
+        test_event = _is_tribute_test_event(data)
+        if TRIBUTE_DEBUG_WEBHOOKS or test_event:
+            await _send_admin_webhook_dump(bot, data, "received valid signed test/debug request")
+        if test_event:
+            return web.json_response({"status": "ok", "mode": "test"})
+
         try:
             ok = await complete_from_tribute_event(bot, data)
         except Exception:
             log.exception("Tribute webhook processing failed")
             return web.Response(status=500, text="processing failed")
+        if not ok:
+            await _send_admin_webhook_dump(bot, data, "valid signed request was not matched to this bot")
         return web.json_response({"status": "ok" if ok else "unknown"}, status=200 if ok else 404)
 
     return handler
@@ -245,6 +290,10 @@ async def _performance_middleware(request: web.Request, handler):
     if isinstance(resp, web.StreamResponse):
         resp.headers["ngrok-skip-browser-warning"] = "true"
         path = request.path
+        if path.startswith("/api/"):
+            resp.headers["Access-Control-Allow-Origin"] = "*"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, trbt-signature, X-Tribute-Signature, X-Triboote-Signature, X-Signature"
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         if path.startswith("/static/"):
             if path.endswith((".js", ".css", ".html")):
                 resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -273,8 +322,9 @@ def build_app(bot: Bot) -> web.Application:
             return await _ping(request)
         return await handler(request)
 
-    app = web.Application(middlewares=[_ping_middleware, _performance_middleware])
+    app = web.Application(client_max_size=50 * 1024 * 1024, middlewares=[_ping_middleware, _performance_middleware])
     app["bot"] = bot
+    setup_api_routes(app)
     app.router.add_get("/", index_handler)
     app.router.add_get("/index.html", index_handler)
     app.router.add_get("/health", health_handler)
@@ -287,6 +337,7 @@ def build_app(bot: Bot) -> web.Application:
     app.router.add_post("/api/select-plan", select_plan_api_handler)
     app.router.add_get("/triboote/success", triboote_success_handler)
     app.router.add_get("/triboote/fail", triboote_fail_handler)
+    app.router.add_post("/api/webhook", make_triboote_webhook_handler(bot))
     app.router.add_post("/triboote/webhook", make_triboote_webhook_handler(bot))
     app.router.add_static("/static", path=str(WEBAPP_DIR), show_index=False)
 

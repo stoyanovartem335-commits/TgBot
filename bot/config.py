@@ -25,14 +25,6 @@ def _int(name: str, default: int | None = None) -> int:
     return int(raw)
 
 
-def _env_first(*names: str, default: str = "") -> str:
-    for name in names:
-        value = os.getenv(name)
-        if value:
-            return value
-    return default
-
-
 @dataclass(frozen=True)
 class Plan:
     code: str
@@ -53,7 +45,6 @@ BOT_USERNAME: str = os.getenv("BOT_USERNAME", "TestKeyBot_bot")
 
 MONGO_URI: str = _req("MONGO_URI")
 
-API_SERVER_URL: str = _req("API_SERVER_URL").rstrip("/")
 API_ADMIN_TOKEN: str = _req("API_ADMIN_TOKEN")
 
 WEBAPP_URL: str = _req("WEBAPP_URL").rstrip("/")
@@ -64,24 +55,10 @@ REQUISITES_TEXT: str = os.getenv("REQUISITES_TEXT", "")
 REQUISITES_CARD: str = os.getenv("REQUISITES_CARD", "")
 REQUISITES_NAME: str = os.getenv("REQUISITES_NAME", "")
 
-TRIBOOTE_API_URL: str = (os.getenv("TRIBOOTE_API_URL") or "").rstrip("/")
-TRIBOOTE_API_KEY: str = os.getenv("TRIBOOTE_API_KEY", "")
-TRIBOOTE_WEBHOOK_SECRET: str = os.getenv("TRIBOOTE_WEBHOOK_SECRET", "")
-
-TRIBUTE_API_URL: str = _env_first(
-    "TRIBUTE_API_URL",
-    "TRIBOOTE_API_URL",
-    default="https://tribute.tg/api/v1",
-).rstrip("/")
-TRIBUTE_API_KEY: str = _env_first("TRIBUTE_API_KEY", "TRIBOOTE_API_KEY")
-TRIBUTE_WEBHOOK_SECRET: str = _env_first(
-    "TRIBUTE_WEBHOOK_SECRET",
-    "TRIBOOTE_WEBHOOK_SECRET",
-    "TRIBUTE_API_KEY",
-    "TRIBOOTE_API_KEY",
-)
-TRIBUTE_PAYMENT_MODE: str = _env_first("TRIBUTE_PAYMENT_MODE", "TRIBOOTE_PAYMENT_MODE", default="auto").lower()
-TRIBUTE_CURRENCY: str = _env_first("TRIBUTE_CURRENCY", "TRIBOOTE_CURRENCY", default="rub").lower()
+TRIBUTE_API_URL: str = (os.getenv("TRIBUTE_API_URL") or "https://tribute.tg/api/v1").rstrip("/")
+TRIBUTE_API_KEY: str = os.getenv("TRIBUTE_API_KEY", "")
+TRIBUTE_PAYMENT_MODE: str = os.getenv("TRIBUTE_PAYMENT_MODE", "api").lower()
+TRIBUTE_CURRENCY: str = os.getenv("TRIBUTE_CURRENCY", "rub").lower()
 
 _PLAN_ENV_SUFFIXES = {
     "1m": "1M",
@@ -92,23 +69,31 @@ _PLAN_ENV_SUFFIXES = {
 }
 
 
-def _plan_env_map(kind: str) -> dict[str, str]:
+def _plan_env_map(prefix: str) -> dict[str, str]:
     result: dict[str, str] = {}
     for code, suffix in _PLAN_ENV_SUFFIXES.items():
-        value = _env_first(
-            f"TRIBUTE_PRODUCT_{kind}_{suffix}",
-            f"TRIBOOTE_PRODUCT_{kind}_{suffix}",
-            f"TRIBUTE_{suffix}_{kind}",
-            f"TRIBOOTE_{suffix}_{kind}",
-        ).strip()
+        value = (os.getenv(f"{prefix}_{suffix}") or "").strip()
         if value:
             result[code] = value
     return result
 
 
-TRIBUTE_PRODUCT_URLS: dict[str, str] = _plan_env_map("URL")
-TRIBUTE_PRODUCT_IDS: dict[str, str] = _plan_env_map("ID")
-TRIBUTE_PRODUCT_NAMES: dict[str, str] = _plan_env_map("NAME")
+TRIBUTE_PRODUCT_URLS: dict[str, str] = _plan_env_map("TRIBUTE_PRODUCT_URL")
+TRIBUTE_PERIOD_IDS: dict[str, str] = _plan_env_map("TRIBUTE_PERIOD_ID")
+
+
+def _csv_env(name: str) -> set[str]:
+    return {
+        item.strip()
+        for item in (os.getenv(name) or "").split(",")
+        if item.strip()
+    }
+
+
+TRIBUTE_ALLOWED_CHANNEL_IDS: set[str] = _csv_env("TRIBUTE_ALLOWED_CHANNEL_IDS")
+TRIBUTE_ALLOWED_CHANNEL_NAMES: set[str] = _csv_env("TRIBUTE_ALLOWED_CHANNEL_NAMES")
+TRIBUTE_ALLOWED_SUBSCRIPTION_IDS: set[str] = _csv_env("TRIBUTE_ALLOWED_SUBSCRIPTION_IDS")
+TRIBUTE_DEBUG_WEBHOOKS: bool = os.getenv("TRIBUTE_DEBUG_WEBHOOKS", "0").lower() in {"1", "true", "yes", "on"}
 
 TG_CHANNEL_URL: str = os.getenv("TG_CHANNEL_URL", "https://t.me/KalivanVC")
 
