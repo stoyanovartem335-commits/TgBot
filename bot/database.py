@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo import ReturnDocument
 
 from .config import MONGO_URI
 from .services.plans import (
@@ -58,6 +61,8 @@ async def init_db() -> None:
     await _db.bot_payment_blocks.create_index([("user_id", 1), ("payment_method", 1)], unique=True)
     await _db.bot_payment_blocks.create_index("expires_at")
     await _db.bot_gsheets_requests.create_index("user_id")
+    await _db.bot_gsheets_requests.create_index([("status", 1), ("requested_at", -1)])
+    await _db.bot_gsheets_requests.create_index([("user_id", 1), ("status", 1), ("requested_at", -1)])
     existing = await _db.bot_settings.find_one({"_id": "global"})
     if not existing:
         await _db.bot_settings.insert_one({
@@ -414,20 +419,69 @@ async def insert_gsheets_request(
     *,
     user_id: int,
     username: str | None,
+    full_name: str | None = None,
     email: str,
     token: str | None,
-) -> int:
+) -> str:
     db = await get_db()
     doc = {
         "user_id": user_id,
         "username": username,
+        "full_name": full_name,
         "email": email,
         "token": token,
         "requested_at": datetime.now(timezone.utc).isoformat(),
         "status": "pending",
     }
     result = await db.bot_gsheets_requests.insert_one(doc)
-    return result.inserted_id
+    return str(result.inserted_id)
+
+
+async def get_latest_gsheets_request_for_user(user_id: int) -> dict | None:
+    db = await get_db()
+    return await db.bot_gsheets_requests.find_one({"user_id": user_id}, sort=[("_id", -1)])
+
+
+async def count_gsheets_requests() -> int:
+    db = await get_db()
+    return await db.bot_gsheets_requests.count_documents({})
+
+
+async def list_gsheets_requests(*, page: int = 0, limit: int = 10) -> list[dict]:
+    db = await get_db()
+    page = max(0, page)
+    limit = max(1, min(limit, 50))
+    cursor = db.bot_gsheets_requests.find({}, sort=[("_id", -1)]).skip(page * limit).limit(limit)
+    return await cursor.to_list(length=limit)
+
+
+def _object_id(value: str) -> ObjectId | None:
+    try:
+        return ObjectId(value)
+    except (InvalidId, TypeError):
+        return None
+
+
+async def get_gsheets_request(request_id: str) -> dict | None:
+    object_id = _object_id(request_id)
+    if object_id is None:
+        return None
+    db = await get_db()
+    return await db.bot_gsheets_requests.find_one({"_id": object_id})
+
+
+async def update_gsheets_request_status(request_id: str, status: str, admin_id: int) -> dict | None:
+    object_id = _object_id(request_id)
+    if object_id is None:
+        return None
+    db = await get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    result = await db.bot_gsheets_requests.find_one_and_update(
+        {"_id": object_id},
+        {"$set": {"status": status, "admin_id": admin_id, "reviewed_at": now}},
+        return_document=ReturnDocument.AFTER,
+    )
+    return result
 
 
 async def get_settings() -> dict:

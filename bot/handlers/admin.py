@@ -12,16 +12,20 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from ..config import ADMIN_ID
 from ..database import (
+    count_gsheets_requests,
     count_manual_payment_requests,
     delete_payment_block,
     get_active_payment_block,
+    get_gsheets_request,
     get_pending,
     get_recent_purchases,
     get_settings,
     list_active_payment_blocks,
+    list_gsheets_requests,
     list_manual_payment_requests,
     set_payment_block,
     get_total_purchases,
+    update_gsheets_request_status,
     update_settings,
 )
 from ..services.api_client import create_subscription_token
@@ -32,6 +36,7 @@ from ..services.token_service import compute_expiration_str, generate_token
 log = logging.getLogger(__name__)
 router = Router(name="admin")
 PAYMENT_REQUESTS_PAGE_SIZE = 10
+GSHEETS_REQUESTS_PAGE_SIZE = 10
 
 class AdminFSM(StatesGroup):
     waiting_price_rub = State()
@@ -71,6 +76,7 @@ def _admin_main_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🎁 Акция / Промо", callback_data="adm:promo")],
         [InlineKeyboardButton(text="📈 Статистика", callback_data="adm:stats")],
         [InlineKeyboardButton(text="🧾 Заявки оплат", callback_data="adm:payment_requests")],
+        [InlineKeyboardButton(text="📋 Google Sheets", callback_data="adm:gsheets")],
         [InlineKeyboardButton(text="⛔ Баны оплат", callback_data="adm:payment_bans")],
         [InlineKeyboardButton(text="🏆 Популярный тариф", callback_data="adm:settings")],
     ])
@@ -353,6 +359,79 @@ async def show_payment_request_detail(message: Message | None, item: dict, *, no
     await _edit_or_send(message, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
 
+def _gsheets_status_label(status: str) -> str:
+    return {
+        "pending": "на проверке",
+        "accepted": "принята",
+        "rejected": "отклонена",
+    }.get(status, status or "?")
+
+
+def _gsheets_button_title(item: dict) -> str:
+    status = _gsheets_status_label(item.get("status", "?"))
+    email = item.get("email", "?")
+    user = item.get("username") or item.get("full_name") or item.get("user_id")
+    return f"{status} | {email} | {user}"
+
+
+async def show_gsheets_requests_panel(message: Message | None, *, notice: str | None = None, page: int = 0) -> None:
+    total = await count_gsheets_requests()
+    pages = _pages_count(total, GSHEETS_REQUESTS_PAGE_SIZE)
+    page = min(_safe_page(page), pages - 1)
+    items = await list_gsheets_requests(page=page, limit=GSHEETS_REQUESTS_PAGE_SIZE)
+    text = ""
+    if notice:
+        text += f"{notice}\n\n"
+    text += "📋 <b>Заявки Google Sheets</b>\n\n"
+    if not items:
+        text += "Заявок пока нет."
+        await _edit_or_send(message, text, InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]]))
+        return
+
+    rows = [
+        [InlineKeyboardButton(text=_gsheets_button_title(item), callback_data=f"adm:gsheets_req:{item['_id']}:{page}")]
+        for item in items
+    ]
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="<", callback_data=f"adm:gsheets:{page - 1}"))
+    if (page + 1) * GSHEETS_REQUESTS_PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton(text=">", callback_data=f"adm:gsheets:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([_back_kb()])
+    await _edit_or_send(
+        message,
+        text + f"Страница <b>{page + 1}/{pages}</b>\n\nВыберите заявку:",
+        InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+async def show_gsheets_request_detail(message: Message | None, item: dict, *, notice: str | None = None, page: int = 0) -> None:
+    request_id = str(item["_id"])
+    user_id = int(item.get("user_id", 0))
+    text = ""
+    if notice:
+        text += f"{notice}\n\n"
+    text += (
+        "📋 <b>Заявка Google Sheets</b>\n\n"
+        f"Статус: <b>{_gsheets_status_label(item.get('status', '?'))}</b>\n"
+        f"Пользователь: {user_ref_html(user_id, item.get('full_name'), item.get('username'))}\n"
+        f"Email: <code>{html.escape(str(item.get('email', '')))}</code>\n"
+        f"Токен: <code>{html.escape(str(item.get('token') or '—'))}</code>\n"
+        f"Дата: <b>{_format_paid_at(str(item.get('requested_at') or ''))}</b>\n"
+        f"ID: <code>{html.escape(request_id)}</code>"
+    )
+    rows = []
+    if item.get("status") == "pending":
+        rows.append([
+            InlineKeyboardButton(text="✅ Принять", callback_data=f"adm:gsheets_accept:{request_id}:{page}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"adm:gsheets_reject:{request_id}:{page}"),
+        ])
+    rows.append([InlineKeyboardButton(text="↩️ К заявкам", callback_data=f"adm:gsheets:{_safe_page(page)}")])
+    await _edit_or_send(message, text, InlineKeyboardMarkup(inline_keyboard=rows))
+
+
 def _block_button_title(block: dict) -> str:
     full_name = (block.get("full_name") or "").strip()
     username = (block.get("username") or "").strip()
@@ -591,6 +670,85 @@ async def adm_stats(call: CallbackQuery) -> None:
         return
     await call.answer()
     await show_stats_panel(call.message)
+
+
+@router.callback_query(F.data == "adm:gsheets")
+async def adm_gsheets(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    await call.answer()
+    await show_gsheets_requests_panel(call.message)
+
+
+@router.callback_query(F.data.startswith("adm:gsheets:"))
+async def adm_gsheets_page(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    parts = (call.data or "").split(":", 2)
+    page = _safe_page(parts[2] if len(parts) > 2 else 0)
+    await call.answer()
+    await show_gsheets_requests_panel(call.message, page=page)
+
+
+@router.callback_query(F.data.startswith("adm:gsheets_req:"))
+async def adm_gsheets_detail(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    parts = (call.data or "").split(":")
+    request_id = parts[2] if len(parts) > 2 else ""
+    page = _safe_page(parts[3] if len(parts) > 3 else 0)
+    item = await get_gsheets_request(request_id)
+    if item is None:
+        await call.answer("Заявка не найдена", show_alert=True)
+        return
+    await call.answer()
+    await show_gsheets_request_detail(call.message, item, page=page)
+
+
+@router.callback_query(F.data.startswith("adm:gsheets_accept:"))
+async def adm_gsheets_accept(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    parts = (call.data or "").split(":")
+    request_id = parts[2] if len(parts) > 2 else ""
+    page = _safe_page(parts[3] if len(parts) > 3 else 0)
+    item = await update_gsheets_request_status(request_id, "accepted", call.from_user.id)
+    if item is None:
+        await call.answer("Заявка не найдена", show_alert=True)
+        return
+    try:
+        await call.bot.send_message(
+            int(item["user_id"]),
+            "✅ Заявка на доступ к Google Sheets принята.\n\n"
+            "Если таблицы еще не открываются, подождите несколько минут и попробуйте снова.",
+        )
+    except Exception:
+        log.exception("Failed to notify user about accepted Google Sheets request")
+    await call.answer("Принято")
+    await show_gsheets_request_detail(call.message, item, notice="✅ Заявка принята.", page=page)
+
+
+@router.callback_query(F.data.startswith("adm:gsheets_reject:"))
+async def adm_gsheets_reject(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    parts = (call.data or "").split(":")
+    request_id = parts[2] if len(parts) > 2 else ""
+    page = _safe_page(parts[3] if len(parts) > 3 else 0)
+    item = await update_gsheets_request_status(request_id, "rejected", call.from_user.id)
+    if item is None:
+        await call.answer("Заявка не найдена", show_alert=True)
+        return
+    try:
+        await call.bot.send_message(
+            int(item["user_id"]),
+            "❌ Заявка на доступ к Google Sheets отклонена.\n\n"
+            "Проверьте email и отправьте заявку заново, если допустили ошибку.",
+        )
+    except Exception:
+        log.exception("Failed to notify user about rejected Google Sheets request")
+    await call.answer("Отклонено")
+    await show_gsheets_request_detail(call.message, item, notice="❌ Заявка отклонена.", page=page)
 
 
 @router.callback_query(F.data == "adm:payment_requests")

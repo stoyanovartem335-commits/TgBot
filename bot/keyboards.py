@@ -65,7 +65,7 @@ def post_purchase_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📖 Инструкция (Telegram-канал)", url=TG_CHANNEL_URL)],
-            [InlineKeyboardButton(text="📋 Запросить Google Sheets", callback_data="gsheets:request")],
+            [InlineKeyboardButton(text="📋 Запросить доступ к Google Sheets", callback_data="gsheets:request")],
         ]
     )
 

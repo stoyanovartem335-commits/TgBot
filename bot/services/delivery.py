@@ -105,7 +105,14 @@ async def deliver_purchase(
             await bot.send_document(
                 user_id,
                 FSInputFile(zip_path, filename="Price_by_KALYVAN.zip"),
-                caption="📦 Ваш архив со скриптом. Распакуйте и следуйте инструкциям в канале.",
+                caption=(
+                    "Распаковать архив — перетащить папку из архива в папку по пути:\n"
+                    "bin — arizona\n\n"
+                    "Обязательно с заменой\n"
+                    "(ваши скрипты не удалятся)\n\n"
+                    "АКТИВАЦИЯ: F2 / /ryz\n\n"
+                    "Нажмите CTRL + R, чтобы загрузить цены"
+                ),
             )
         except Exception as exc:
             log.error("Failed to send ZIP to user %s: %s", user_id, exc)
