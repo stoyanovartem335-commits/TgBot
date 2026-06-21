@@ -17,6 +17,7 @@ from ..database import (
     get_active_payment_block,
     get_pending,
     get_settings,
+    hide_saved_manual_requests_for_user,
     list_manual_requests_for_user,
     mark_pending_status,
     set_payment_block,
@@ -169,6 +170,7 @@ def _request_page_rows(items: list[dict], page: int, total: int) -> list[list[In
         nav.append(InlineKeyboardButton(text=">", callback_data=f"manual:my:{page + 1}"))
     if nav:
         rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🗑 Удалить все сохраненные заявки", callback_data=f"manual:clear:{page}")])
     return rows
 
 
@@ -255,6 +257,19 @@ async def on_my_requests_page_callback(call: CallbackQuery) -> None:
         await _show_my_requests_page(call.message, call.from_user.id, page=page, edit=True)
 
 
+@router.callback_query(F.data.startswith("manual:clear:"))
+async def on_my_requests_clear(call: CallbackQuery) -> None:
+    if call.from_user is None:
+        return
+    parts = (call.data or "").split(":", 2)
+    page = _safe_page(parts[2] if len(parts) > 2 else 0)
+    removed = await hide_saved_manual_requests_for_user(call.from_user.id)
+    await call.answer("История очищена" if removed else "Закрытых заявок для удаления нет")
+    if call.message:
+        notice = "Закрытые заявки удалены из вашего списка." if removed else "Закрытых заявок для удаления нет."
+        await _show_my_requests_page(call.message, call.from_user.id, notice=notice, page=page, edit=True)
+
+
 @router.callback_query(F.data.startswith("manual:view:"))
 async def on_my_request_detail(call: CallbackQuery) -> None:
     if call.from_user is None:
@@ -274,7 +289,9 @@ async def on_my_request_detail(call: CallbackQuery) -> None:
 async def on_my_request_hide(call: CallbackQuery) -> None:
     if call.from_user is None:
         return
-    payment_id = call.data.split(":", 2)[2]
+    parts = (call.data or "").split(":")
+    payment_id = parts[2] if len(parts) > 2 else ""
+    page = _safe_page(parts[3] if len(parts) > 3 else 0)
     item = await get_pending(payment_id)
     if item is None or item.get("user_id") != call.from_user.id:
         await call.answer("Заявка не найдена", show_alert=True)
@@ -285,6 +302,8 @@ async def on_my_request_hide(call: CallbackQuery) -> None:
     await update_pending_fields(payment_id, {"user_hidden": True})
     await call.answer("Скрыто")
     if call.message:
+        await _show_my_requests_page(call.message, call.from_user.id, notice="Заявка удалена из вашего списка.", page=page, edit=True)
+        return
         await call.message.edit_text("Заявка скрыта из вашего списка.")
 
 
@@ -292,7 +311,9 @@ async def on_my_request_hide(call: CallbackQuery) -> None:
 async def on_my_request_edit(call: CallbackQuery, state: FSMContext) -> None:
     if call.from_user is None:
         return
-    payment_id = call.data.split(":", 2)[2]
+    parts = (call.data or "").split(":")
+    payment_id = parts[2] if len(parts) > 2 else ""
+    page = _safe_page(parts[3] if len(parts) > 3 else 0)
     item = await get_pending(payment_id)
     if item is None or item.get("user_id") != call.from_user.id:
         await call.answer("Заявка не найдена", show_alert=True)
@@ -427,7 +448,9 @@ async def on_requisites_selected_inline(call: CallbackQuery) -> None:
 async def on_manual_cancel(call: CallbackQuery, state: FSMContext) -> None:
     if call.from_user is None:
         return
-    payment_id = call.data.split(":", 2)[2]
+    parts = (call.data or "").split(":")
+    payment_id = parts[2] if len(parts) > 2 else ""
+    page = _safe_page(parts[3] if len(parts) > 3 else 0)
     pending = await get_pending(payment_id)
     if pending is None or pending.get("user_id") != call.from_user.id:
         await call.answer("Заявка не найдена", show_alert=True)
@@ -439,6 +462,8 @@ async def on_manual_cancel(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await call.answer("Заявка отменена")
     if call.message:
+        await _show_my_requests_page(call.message, call.from_user.id, notice="Заявка отменена.", page=page, edit=True)
+        return
         try:
             await call.message.edit_reply_markup(reply_markup=None)
         except Exception:

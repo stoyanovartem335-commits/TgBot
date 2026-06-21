@@ -18,6 +18,7 @@ _db: AsyncIOMotorDatabase | None = None
 _settings_cache: dict | None = None
 _settings_cache_until: datetime | None = None
 _settings_cache_ttl = timedelta(seconds=30)
+_manual_cleanup_cache_until: datetime | None = None
 
 
 async def get_db() -> AsyncIOMotorDatabase:
@@ -53,6 +54,7 @@ async def init_db() -> None:
     await _db.bot_pending_payments.create_index([("user_id", 1), ("payment_method", 1), ("status", 1)])
     await _db.bot_pending_payments.create_index([("user_id", 1), ("payment_method", 1), ("user_hidden", 1), ("_id", -1)])
     await _db.bot_pending_payments.create_index([("payment_method", 1), ("_id", -1)])
+    await _db.bot_pending_payments.create_index([("payment_method", 1), ("created_at", 1)])
     await _db.bot_payment_blocks.create_index([("user_id", 1), ("payment_method", 1)], unique=True)
     await _db.bot_payment_blocks.create_index("expires_at")
     await _db.bot_gsheets_requests.create_index("user_id")
@@ -200,6 +202,7 @@ async def update_pending_fields(payment_id: str, updates: dict) -> None:
 
 
 async def get_active_manual_pending(user_id: int) -> dict | None:
+    await cleanup_old_manual_requests()
     db = await get_db()
     return await db.bot_pending_payments.find_one(
         {
@@ -212,24 +215,60 @@ async def get_active_manual_pending(user_id: int) -> dict | None:
     )
 
 
+MANUAL_PAYMENT_METHODS = ["funpay", "requisites"]
+MANUAL_ACTIVE_STATUSES = ["pending", "pending_review"]
+MANUAL_REQUEST_RETENTION_DAYS = 3
+
+
 def _manual_user_filter(user_id: int) -> dict:
     return {
         "user_id": user_id,
-        "payment_method": {"$in": ["funpay", "requisites"]},
+        "payment_method": {"$in": MANUAL_PAYMENT_METHODS},
         "user_hidden": {"$ne": True},
     }
 
 
 def _manual_admin_filter() -> dict:
-    return {"payment_method": {"$in": ["funpay", "requisites"]}}
+    return {"payment_method": {"$in": MANUAL_PAYMENT_METHODS}}
+
+
+async def cleanup_old_manual_requests(*, force: bool = False) -> int:
+    global _manual_cleanup_cache_until
+    now_dt = datetime.now(timezone.utc)
+    if not force and _manual_cleanup_cache_until and _manual_cleanup_cache_until > now_dt:
+        return 0
+    _manual_cleanup_cache_until = now_dt + timedelta(minutes=30)
+    cutoff = (now_dt - timedelta(days=MANUAL_REQUEST_RETENTION_DAYS)).isoformat()
+    db = await get_db()
+    result = await db.bot_pending_payments.delete_many({
+        "payment_method": {"$in": MANUAL_PAYMENT_METHODS},
+        "created_at": {"$lt": cutoff},
+    })
+    return result.deleted_count
+
+
+async def hide_saved_manual_requests_for_user(user_id: int) -> int:
+    db = await get_db()
+    result = await db.bot_pending_payments.update_many(
+        {
+            "user_id": user_id,
+            "payment_method": {"$in": MANUAL_PAYMENT_METHODS},
+            "status": {"$nin": MANUAL_ACTIVE_STATUSES},
+            "user_hidden": {"$ne": True},
+        },
+        {"$set": {"user_hidden": True, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return result.modified_count
 
 
 async def count_manual_requests_for_user(user_id: int) -> int:
+    await cleanup_old_manual_requests()
     db = await get_db()
     return await db.bot_pending_payments.count_documents(_manual_user_filter(user_id))
 
 
 async def list_manual_requests_for_user(user_id: int, *, page: int = 0, limit: int = 10) -> list[dict]:
+    await cleanup_old_manual_requests()
     db = await get_db()
     page = max(0, page)
     limit = max(1, min(limit, 50))
@@ -241,11 +280,13 @@ async def list_manual_requests_for_user(user_id: int, *, page: int = 0, limit: i
 
 
 async def count_manual_payment_requests() -> int:
+    await cleanup_old_manual_requests()
     db = await get_db()
     return await db.bot_pending_payments.count_documents(_manual_admin_filter())
 
 
 async def list_manual_payment_requests(*, page: int = 0, limit: int = 10) -> list[dict]:
+    await cleanup_old_manual_requests()
     db = await get_db()
     page = max(0, page)
     limit = max(1, min(limit, 50))
