@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, Message
 
 from ..config import TG_CHANNEL_URL, support_url
 from ..keyboards import BTN_NEWS, BTN_SUPPORT, BTN_MAIN, main_menu_kb
+from .start import install_main_menu
 
 router = Router(name="menu")
 
@@ -31,7 +32,7 @@ async def on_support(message: Message) -> None:
 
 @router.message(F.text == BTN_MAIN)
 async def on_main(message: Message) -> None:
-    await message.answer("Выберите действие:", reply_markup=main_menu_kb())
+    await install_main_menu(message)
 
 
 @router.callback_query(F.data == "pay:cancel")

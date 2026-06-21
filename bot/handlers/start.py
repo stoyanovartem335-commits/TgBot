@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
@@ -8,6 +10,7 @@ from ..keyboards import main_menu_kb
 from ..services.settings_service import get_plans_from_settings, get_active_discount, apply_discount
 
 router = Router(name="start")
+KEYBOARD_REFRESH_TEXT = "\u2060"
 
 WELCOME = (
     "👋 <b>Добро пожаловать!</b>\n\n"
@@ -19,8 +22,13 @@ WELCOME = (
 )
 
 
-async def send_main_menu(message: Message, text: str) -> None:
-    await message.answer(text, reply_markup=main_menu_kb())
+async def install_main_menu(message: Message) -> None:
+    tech_msg = await message.answer(KEYBOARD_REFRESH_TEXT, reply_markup=main_menu_kb())
+    await asyncio.sleep(0.5)
+    try:
+        await tech_msg.delete()
+    except Exception:
+        pass
 
 
 @router.message(CommandStart())
@@ -46,11 +54,13 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
                 "Выберите способ оплаты:"
             )
             await message.answer(text, reply_markup=payment_methods_kb(plan_code))
+            await install_main_menu(message)
             return
 
-    await message.answer(WELCOME, reply_markup=main_menu_kb())
+    await message.answer(WELCOME)
+    await install_main_menu(message)
 
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message) -> None:
-    await send_main_menu(message, "Выберите действие:")
+    await install_main_menu(message)
