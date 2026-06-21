@@ -31,7 +31,7 @@ async def on_support(message: Message) -> None:
 
 @router.message(F.text == BTN_MAIN)
 async def on_main(message: Message) -> None:
-    await message.answer("Откройте витрину через кнопку в панели ниже.", reply_markup=main_menu_kb())
+    await message.answer("Выберите действие:", reply_markup=main_menu_kb())
 
 
 @router.callback_query(F.data == "pay:cancel")

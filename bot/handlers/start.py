@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import Message
 
 from ..keyboards import main_menu_kb
 from ..services.settings_service import get_plans_from_settings, get_active_discount, apply_discount
@@ -19,17 +19,7 @@ WELCOME = (
 )
 
 
-async def reset_reply_keyboard(message: Message) -> None:
-    reset_msg = await message.answer("Обновляю панель кнопок...", reply_markup=ReplyKeyboardRemove())
-    try:
-        await reset_msg.delete()
-    except Exception:
-        pass
-
-
-async def send_main_menu(message: Message, text: str, *, reset_keyboard: bool = False) -> None:
-    if reset_keyboard:
-        await reset_reply_keyboard(message)
+async def send_main_menu(message: Message, text: str) -> None:
     await message.answer(text, reply_markup=main_menu_kb())
 
 
@@ -37,7 +27,6 @@ async def send_main_menu(message: Message, text: str, *, reset_keyboard: bool = 
 async def cmd_start(message: Message, command: CommandObject) -> None:
     args = command.args
     if args and args.startswith("buy_"):
-        await send_main_menu(message, "Панель кнопок готова.", reset_keyboard=True)
         plan_code = args[4:]
         plans = await get_plans_from_settings()
         plan = next((p for p in plans if p["code"] == plan_code), None)
@@ -59,11 +48,9 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
             await message.answer(text, reply_markup=payment_methods_kb(plan_code))
             return
 
-    await reset_reply_keyboard(message)
-    await message.answer(WELCOME)
-    await message.answer("Панель кнопок готова.", reply_markup=main_menu_kb())
+    await message.answer(WELCOME, reply_markup=main_menu_kb())
 
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message) -> None:
-    await send_main_menu(message, "Меню обновлено.", reset_keyboard=True)
+    await send_main_menu(message, "Выберите действие:")
