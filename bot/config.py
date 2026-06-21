@@ -55,10 +55,8 @@ REQUISITES_TEXT: str = os.getenv("REQUISITES_TEXT", "")
 REQUISITES_CARD: str = os.getenv("REQUISITES_CARD", "")
 REQUISITES_NAME: str = os.getenv("REQUISITES_NAME", "")
 
-TRIBUTE_API_URL: str = (os.getenv("TRIBUTE_API_URL") or "https://tribute.tg/api/v1").rstrip("/")
 TRIBUTE_API_KEY: str = os.getenv("TRIBUTE_API_KEY", "")
-TRIBUTE_PAYMENT_MODE: str = os.getenv("TRIBUTE_PAYMENT_MODE", "api").lower()
-TRIBUTE_CURRENCY: str = os.getenv("TRIBUTE_CURRENCY", "rub").lower()
+TRIBUTE_SUBSCRIPTION_URL: str = (os.getenv("TRIBUTE_SUBSCRIPTION_URL") or "").strip()
 
 _PLAN_ENV_SUFFIXES = {
     "1m": "1M",
@@ -78,7 +76,6 @@ def _plan_env_map(prefix: str) -> dict[str, str]:
     return result
 
 
-TRIBUTE_PRODUCT_URLS: dict[str, str] = _plan_env_map("TRIBUTE_PRODUCT_URL")
 TRIBUTE_PERIOD_IDS: dict[str, str] = _plan_env_map("TRIBUTE_PERIOD_ID")
 
 

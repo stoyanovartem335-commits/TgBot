@@ -223,6 +223,8 @@ def _is_tribute_test_event(data: dict) -> bool:
     name = str(data.get("name") or data.get("event") or "").lower()
     if name in {"test", "ping", "webhook_test", "test_webhook"}:
         return True
+    if data.get("test_event") == "test_event" or payload.get("test_event") == "test_event":
+        return True
     if data.get("test") is True or payload.get("test") is True:
         return True
     sample_markers = (
@@ -279,7 +281,7 @@ def make_triboote_webhook_handler(bot: Bot):
             return web.Response(status=500, text="processing failed")
         if not ok:
             await _send_admin_webhook_dump(bot, data, "valid signed request was not matched to this bot")
-        return web.json_response({"status": "ok" if ok else "unknown"}, status=200 if ok else 404)
+        return web.json_response({"status": "ok" if ok else "ignored"})
 
     return handler
 

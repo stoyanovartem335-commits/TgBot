@@ -8,11 +8,12 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 
-from .config import BOT_TOKEN
+from .config import BOT_TOKEN, WEBAPP_URL
 from .database import close_db, init_db
 from .handlers import admin, gsheets, menu, requisites, stars, start, triboote, webapp
-from .services import api_client, triboote_api
+from .services import api_client
 from .webhook_server import start_web_server
 
 
@@ -26,6 +27,24 @@ def setup_logging() -> None:
 def _handle_asyncio_exception(loop, context):
     msg = context.get("exception", context["message"])
     logging.getLogger(__name__).error("Unhandled asyncio exception: %s", msg)
+
+
+async def setup_bot_ui(bot: Bot) -> None:
+    log = logging.getLogger(__name__)
+    try:
+        await bot.set_my_commands([
+            BotCommand(command="start", description="Запустить бота"),
+            BotCommand(command="menu", description="Показать меню"),
+            BotCommand(command="adm", description="Админ-панель"),
+        ])
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="Открыть витрину",
+                web_app=WebAppInfo(url=f"{WEBAPP_URL}/"),
+            )
+        )
+    except Exception:
+        log.exception("Failed to setup Telegram menu button")
 
 
 async def main() -> None:
@@ -53,6 +72,7 @@ async def main() -> None:
         gsheets.router,
     )
 
+    await setup_bot_ui(bot)
     runner = await start_web_server(bot)
     log.info("Service started. Bot polling beginning.")
     try:
@@ -61,7 +81,6 @@ async def main() -> None:
     finally:
         await runner.cleanup()
         await api_client.close_session()
-        await triboote_api.close_session()
         await close_db()
         await bot.session.close()
 

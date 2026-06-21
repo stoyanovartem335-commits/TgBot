@@ -38,8 +38,8 @@ services:
         sync: false
       - key: TRIBUTE_API_KEY
         sync: false
-      - key: TRIBUTE_PAYMENT_MODE
-        value: api
+      - key: TRIBUTE_SUBSCRIPTION_URL
+        sync: false
       - key: TRIBUTE_DEBUG_WEBHOOKS
         value: "1"
       - key: TRIBUTE_ALLOWED_CHANNEL_IDS
@@ -57,16 +57,6 @@ services:
       - key: TRIBUTE_PERIOD_ID_6M
         sync: false
       - key: TRIBUTE_PERIOD_ID_FOREVER
-        sync: false
-      - key: TRIBUTE_PRODUCT_URL_1M
-        sync: false
-      - key: TRIBUTE_PRODUCT_URL_2M
-        sync: false
-      - key: TRIBUTE_PRODUCT_URL_3M
-        sync: false
-      - key: TRIBUTE_PRODUCT_URL_6M
-        sync: false
-      - key: TRIBUTE_PRODUCT_URL_FOREVER
         sync: false
       - key: TG_CHANNEL_URL
         sync: false

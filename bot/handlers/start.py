@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from aiogram import Router
-from aiogram.filters import CommandObject, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 
 from ..keyboards import main_menu_kb
@@ -45,3 +45,8 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
             return
 
     await message.answer(WELCOME, reply_markup=main_menu_kb())
+
+
+@router.message(Command("menu"))
+async def cmd_menu(message: Message) -> None:
+    await message.answer("Меню обновлено.", reply_markup=main_menu_kb())

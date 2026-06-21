@@ -180,6 +180,44 @@ async def latest_token_for_user(user_id: int) -> str | None:
     return doc["token"] if doc else None
 
 
+async def get_latest_purchase_for_user(
+    user_id: int,
+    payment_method: str | None = None,
+) -> dict | None:
+    db = await get_db()
+    query = {"user_id": user_id}
+    if payment_method:
+        query["payment_method"] = payment_method
+    return await db.bot_purchases.find_one(query, sort=[("_id", -1)])
+
+
+async def update_purchase_expiration(
+    purchase_id,
+    *,
+    plan_code: str,
+    expires_at: datetime | None,
+) -> None:
+    db = await get_db()
+    await db.bot_purchases.update_one(
+        {"_id": purchase_id},
+        {
+            "$set": {
+                "plan_code": plan_code,
+                "expires_at": expires_at.isoformat() if expires_at else None,
+                "renewed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        },
+    )
+
+
+async def update_api_token_expiration(token: str, expiration_str: str | None) -> None:
+    db = await get_db()
+    await db.loader_keys.update_one(
+        {"key_part2": token},
+        {"$set": {"subscription_expiration": expiration_str}},
+    )
+
+
 async def insert_gsheets_request(
     *,
     user_id: int,

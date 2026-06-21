@@ -28,9 +28,10 @@ async def issue_tokens(
     plan_code: str,
     days: int | None,
     count: int = 2,
+    expires_at=None,
 ) -> list[str]:
     tokens = []
-    expiration_str = compute_expiration_str(plan_code, days)
+    expiration_str = expires_at.strftime("%d.%m.%Y") if expires_at else compute_expiration_str(plan_code, days)
 
     for i in range(count):
         token = generate_token()
