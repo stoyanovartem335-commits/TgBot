@@ -41,15 +41,15 @@ services:
       - key: TRIBUTE_SUBSCRIPTION_URL
         value: https://t.me/tribute/app?startapp=sYQs
       - key: TRIBUTE_DEBUG_WEBHOOKS
-        value: "1"
+        value: "0"
       - key: TRIBUTE_ALLOWED_CHANNEL_IDS
-        sync: false
+        value: "479458"
       - key: TRIBUTE_ALLOWED_CHANNEL_NAMES
-        sync: false
+        value: ""
       - key: TRIBUTE_ALLOWED_SUBSCRIPTION_IDS
-        sync: false
+        value: "233892"
       - key: TRIBUTE_PERIOD_ID_1M
-        sync: false
+        value: "429551"
       - key: TRIBUTE_PERIOD_ID_3M
         sync: false
       - key: TRIBUTE_PERIOD_ID_6M

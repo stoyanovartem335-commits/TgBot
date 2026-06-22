@@ -78,7 +78,7 @@ def _plan_env_map(prefix: str) -> dict[str, str]:
     return result
 
 
-TRIBUTE_PERIOD_IDS: dict[str, str] = _plan_env_map("TRIBUTE_PERIOD_ID")
+TRIBUTE_PERIOD_IDS: dict[str, str] = {"1m": "429551", **_plan_env_map("TRIBUTE_PERIOD_ID")}
 
 
 def _csv_env(name: str) -> set[str]:
@@ -89,9 +89,9 @@ def _csv_env(name: str) -> set[str]:
     }
 
 
-TRIBUTE_ALLOWED_CHANNEL_IDS: set[str] = _csv_env("TRIBUTE_ALLOWED_CHANNEL_IDS")
+TRIBUTE_ALLOWED_CHANNEL_IDS: set[str] = _csv_env("TRIBUTE_ALLOWED_CHANNEL_IDS") or {"479458"}
 TRIBUTE_ALLOWED_CHANNEL_NAMES: set[str] = _csv_env("TRIBUTE_ALLOWED_CHANNEL_NAMES")
-TRIBUTE_ALLOWED_SUBSCRIPTION_IDS: set[str] = _csv_env("TRIBUTE_ALLOWED_SUBSCRIPTION_IDS")
+TRIBUTE_ALLOWED_SUBSCRIPTION_IDS: set[str] = _csv_env("TRIBUTE_ALLOWED_SUBSCRIPTION_IDS") or {"233892"}
 TRIBUTE_DEBUG_WEBHOOKS: bool = os.getenv("TRIBUTE_DEBUG_WEBHOOKS", "0").lower() in {"1", "true", "yes", "on"}
 
 TG_CHANNEL_URL: str = os.getenv("TG_CHANNEL_URL", "https://t.me/KalivanVC")

@@ -51,6 +51,7 @@ async def init_db() -> None:
     _db = _client.get_database()
     await _db.bot_purchases.create_index("user_id")
     await _db.bot_purchases.create_index("token", unique=True)
+    await _db.bot_purchases.create_index([("user_id", 1), ("delivery_status", 1)])
     await _db.bot_pending_payments.create_index("payment_id", unique=True)
     await _db.bot_pending_payments.create_index("user_id")
     await _db.bot_pending_payments.create_index("external_ref")
@@ -117,6 +118,7 @@ async def insert_purchase(
         "payment_method": payment_method,
         "paid_at": paid_at.isoformat(),
         "expires_at": expires_at.isoformat() if expires_at else None,
+        "delivery_status": "pending",
     }
     await db.bot_purchases.insert_one(doc)
     return paid_at, expires_at
@@ -386,6 +388,32 @@ async def get_latest_purchase_for_user(
     if payment_method:
         query["payment_method"] = payment_method
     return await db.bot_purchases.find_one(query, sort=[("_id", -1)])
+
+
+async def list_pending_purchase_deliveries_for_user(user_id: int, limit: int = 5) -> list[dict]:
+    db = await get_db()
+    cursor = db.bot_purchases.find(
+        {"user_id": user_id, "delivery_status": {"$in": ["pending", "failed"]}},
+        sort=[("_id", 1)],
+        limit=limit,
+    )
+    return await cursor.to_list(length=limit)
+
+
+async def mark_purchase_delivery_status(purchase_id, status: str) -> None:
+    db = await get_db()
+    await db.bot_purchases.update_one(
+        {"_id": purchase_id},
+        {"$set": {"delivery_status": status, "delivery_updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+
+
+async def mark_purchase_delivery_status_by_token(token: str, status: str) -> None:
+    db = await get_db()
+    await db.bot_purchases.update_one(
+        {"token": token},
+        {"$set": {"delivery_status": status, "delivery_updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
 
 
 async def update_purchase_expiration(

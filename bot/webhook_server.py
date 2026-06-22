@@ -246,6 +246,22 @@ async def _send_admin_webhook_dump(bot: Bot, data: dict, reason: str) -> None:
         log.exception("Failed to send Tribute webhook dump to admin")
 
 
+def _debug_body_for_rejected_webhook(body: bytes, sig: str | None) -> dict:
+    try:
+        parsed = json.loads(body.decode("utf-8") or "{}")
+        payload = parsed if isinstance(parsed, dict) else {"_payload": parsed}
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        payload = {
+            "_invalid_json": True,
+            "_body_preview": body[:2000].decode("utf-8", errors="replace"),
+        }
+    payload["_debug"] = {
+        "signature_header_present": bool(sig),
+        "body_size": len(body),
+    }
+    return payload
+
+
 def make_triboote_webhook_handler(bot: Bot):
     async def handler(request: web.Request) -> web.Response:
         body = await request.read()
@@ -257,6 +273,12 @@ def make_triboote_webhook_handler(bot: Bot):
         )
         if not _verify_triboote_signature(body, sig):
             log.warning("Tribute webhook bad signature")
+            if TRIBUTE_DEBUG_WEBHOOKS:
+                await _send_admin_webhook_dump(
+                    bot,
+                    _debug_body_for_rejected_webhook(body, sig),
+                    "REJECTED: bad signature. Check TRIBUTE_API_KEY in Render and Tribute.",
+                )
             return web.Response(status=401, text="bad signature")
 
         try:
@@ -266,7 +288,12 @@ def make_triboote_webhook_handler(bot: Bot):
 
         test_event = _is_tribute_test_event(data)
         if TRIBUTE_DEBUG_WEBHOOKS or test_event:
-            await _send_admin_webhook_dump(bot, data, "received valid signed test/debug request")
+            reason = (
+                "TEST webhook only: endpoint/signature OK, no payment data."
+                if test_event
+                else "VALID signed Tribute webhook payload."
+            )
+            await _send_admin_webhook_dump(bot, data, reason)
         if test_event:
             return web.json_response({"status": "ok", "mode": "test"})
 

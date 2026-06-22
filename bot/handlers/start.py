@@ -5,6 +5,7 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 
 from ..keyboards import main_menu_kb, payment_methods_kb
+from ..services.delivery import send_pending_purchase_deliveries
 from ..services.payment_flow import selected_plan_text
 from ..services.settings_service import get_plans_from_settings, get_active_discount, apply_discount
 
@@ -18,6 +19,11 @@ WELCOME = (
     "• 📰 <b>Новости Рынка</b> — наш Telegram-канал\n"
     "• 💬 <b>Тех поддержка</b> — связаться с админом"
 )
+
+
+async def _send_pending_deliveries(message: Message) -> None:
+    if message.from_user is not None:
+        await send_pending_purchase_deliveries(message.bot, message.from_user.id)
 
 
 @router.message(CommandStart())
@@ -39,11 +45,14 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
                 selected_plan_text(plan["label"], price_rub, price_stars),
                 reply_markup=payment_methods_kb(plan_code),
             )
+            await _send_pending_deliveries(message)
             return
 
     await message.answer(WELCOME, reply_markup=main_menu_kb())
+    await _send_pending_deliveries(message)
 
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message) -> None:
     await message.answer(WELCOME, reply_markup=main_menu_kb())
+    await _send_pending_deliveries(message)

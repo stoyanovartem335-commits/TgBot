@@ -20,6 +20,7 @@ from ..config import (
 )
 from ..database import (
     create_pending,
+    get_latest_purchase_for_user,
     get_latest_pending_for_user,
     get_pending,
     get_pending_by_external_ref,
@@ -40,6 +41,21 @@ _PLAN_NAME_PATTERNS: dict[str, tuple[str, ...]] = {
     "6m": (r"\b6\s*(m|mo|month|months)\b", r"6\s*мес", r"6\s*месяц", r"\b180\s*(д|day|days)\b", r"half\s*year"),
     "3m": (r"\b3\s*(m|mo|month|months)\b", r"3\s*мес", r"3\s*месяц", r"\b90\s*(д|day|days)\b", r"quarter"),
     "1m": (r"\b1\s*(m|mo|month)\b", r"1\s*мес", r"1\s*месяц", r"\b30\s*(д|day|days)\b"),
+}
+
+_PLAN_NAME_PATTERNS = {
+    "forever": (r"\bforever\b", r"\blifetime\b", r"\bpermanent\b", r"\bunlimited\b", r"\bone[_\s-]?time\b", r"навсегда", r"бессроч"),
+    "6m": (r"\b6\s*(m|mo|month|months)\b", r"\b6[_\s-]?month", r"\bsemi[_\s-]?annual\b", r"\bhalf[_\s-]?year\b", r"6\s*мес", r"6\s*месяц", r"\b180\s*(д|day|days)\b"),
+    "3m": (r"\b3\s*(m|mo|month|months)\b", r"\b3[_\s-]?month", r"\bquarter", r"\bthree[_\s-]?month", r"3\s*мес", r"3\s*месяц", r"\b90\s*(д|day|days)\b"),
+    "1m": (r"\b1\s*(m|mo|month)\b", r"\bmonthly\b", r"\bmonth\b", r"\b1[_\s-]?month", r"1\s*мес", r"1\s*месяц", r"\b30\s*(д|day|days)\b"),
+}
+
+
+_DIGITAL_PRODUCT_EVENTS = {
+    "new_digital_product",
+    "digital_product",
+    "digital_product.paid",
+    "digital_product_paid",
 }
 
 
@@ -139,17 +155,21 @@ async def complete_from_webhook(bot: Bot, payment_id: str) -> bool:
 async def complete_from_tribute_event(bot: Bot, data: dict[str, Any]) -> bool:
     name = str(data.get("name") or data.get("event") or data.get("type") or "").lower()
     payload = _extract_payload(data)
+    payload = _payload_with_event_fields(payload, data)
 
     if data.get("test_event") == "test_event":
         return True
 
-    if name in {"new_subscription", "subscription_created", "subscription.paid", "subscription_paid"}:
+    if name in {"new_subscription", "subscription_created", "subscription.paid", "subscription_paid", "new_subscription_gift", "subscription_gift", "gift_subscription", "gifted_subscription"}:
         return await _complete_subscription_event(bot, name, payload, data, renew=False)
 
-    if name in {"renewed_subscription", "subscription_renewed", "subscription.renewed", "subscription_rebill"}:
+    if name in _DIGITAL_PRODUCT_EVENTS:
+        return await _complete_digital_product_event(bot, name, payload, data)
+
+    if name in {"renewed_subscription", "subscription_renewed", "subscription.renewed", "subscription_rebill", "rebill_subscription", "recurring_payment", "subscription_payment"}:
         return await _complete_subscription_event(bot, name, payload, data, renew=True)
 
-    if name in {"cancelled_subscription", "subscription_cancelled", "subscription.cancelled"}:
+    if name in {"cancelled_subscription", "subscription_cancelled", "subscription.cancelled", "canceled_subscription", "subscription_canceled", "subscription.canceled"}:
         log.info("Tribute subscription cancelled: %s", payload)
         return True
 
@@ -181,6 +201,37 @@ async def complete_from_tribute_event(bot: Bot, data: dict[str, Any]) -> bool:
     return True
 
 
+async def _complete_digital_product_event(
+    bot: Bot,
+    name: str,
+    payload: dict[str, Any],
+    data: dict[str, Any],
+) -> bool:
+    user_id = _extract_telegram_user_id(payload)
+    if user_id <= 0:
+        log.warning("Tribute digital product without telegram_user_id: %s", payload)
+        return False
+
+    plan_code = await _resolve_plan_code(payload)
+    if plan_code not in PLAN_CODES:
+        log.warning("Tribute digital product cannot map plan: %s", payload)
+        return False
+
+    event_id = _digital_product_event_id(name, payload, data)
+    await create_pending(
+        payment_id=event_id,
+        user_id=user_id,
+        username=str(payload.get("telegram_username") or payload.get("username") or "") or None,
+        plan_code=plan_code,
+        payment_method="triboote",
+        external_ref=_digital_product_external_ref(payload, data),
+    )
+    pending = await get_pending(event_id)
+    if pending is None:
+        return False
+    return await _complete_pending(bot, pending, renew=False, expires_at_override=_extract_expires_at(payload))
+
+
 async def _complete_subscription_event(
     bot: Bot,
     name: str,
@@ -210,6 +261,9 @@ async def _complete_subscription_event(
     if plan_code not in PLAN_CODES:
         log.warning("Tribute subscription cannot map plan: %s", payload)
         return False
+
+    existing_purchase = await get_latest_purchase_for_user(user_id, payment_method="triboote")
+    renew = renew or existing_purchase is not None
 
     event_id = _subscription_event_id(name, payload, data)
     await create_pending(
@@ -281,6 +335,10 @@ async def _resolve_plan_code(payload: dict[str, Any]) -> str | None:
         if plan_from_name:
             return plan_from_name
 
+    plan_from_dates = _plan_from_dates(payload)
+    if plan_from_dates:
+        return plan_from_dates
+
     return await _plan_from_amount(payload)
 
 
@@ -324,13 +382,39 @@ def _extract_payload(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _payload_with_event_fields(payload: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    if payload is data:
+        return payload
+    merged = dict(payload)
+    for key in ("name", "event", "type", "created_at", "createdAt", "sent_at", "sentAt"):
+        if key in data and key not in merged:
+            merged[key] = data[key]
+    return merged
+
+
 def _extract_telegram_user_id(payload: dict[str, Any]) -> int:
     values = (
+        payload.get("recipient_telegram_user_id"),
+        payload.get("recipientTelegramUserId"),
+        payload.get("receiver_telegram_user_id"),
+        payload.get("receiverTelegramUserId"),
+        payload.get("gifted_to_telegram_user_id"),
+        payload.get("giftedToTelegramUserId"),
         payload.get("telegram_user_id"),
         payload.get("telegramUserId"),
         payload.get("tg_user_id"),
         payload.get("user_id"),
     )
+    for nested_key in ("recipient", "receiver", "gift_recipient", "gifted_to"):
+        nested = payload.get(nested_key)
+        if isinstance(nested, dict):
+            values = (
+                *values,
+                nested.get("telegram_user_id"),
+                nested.get("telegramUserId"),
+                nested.get("tg_user_id"),
+                nested.get("id"),
+            )
     user = payload.get("user")
     if isinstance(user, dict):
         values = (*values, user.get("telegram_user_id"), user.get("telegramUserId"), user.get("id"))
@@ -407,9 +491,6 @@ def _is_allowed_tribute_subject(payload: dict[str, Any]) -> bool:
 
     channel_name = _extract_channel_name(payload)
     allowed_names = {_normalize_subject_name(value) for value in TRIBUTE_ALLOWED_CHANNEL_NAMES}
-    tg_slug = _telegram_slug(TG_CHANNEL_URL)
-    if tg_slug:
-        allowed_names.add(_normalize_subject_name(tg_slug))
     if allowed_names and channel_name not in allowed_names:
         return False
 
@@ -417,12 +498,22 @@ def _is_allowed_tribute_subject(payload: dict[str, Any]) -> bool:
     if TRIBUTE_ALLOWED_SUBSCRIPTION_IDS and subscription_id not in TRIBUTE_ALLOWED_SUBSCRIPTION_IDS:
         return False
 
-    period_id = _extract_period_id(payload)
-    allowed_period_ids = {str(value).strip() for value in TRIBUTE_PERIOD_IDS.values() if str(value).strip()}
-    if allowed_period_ids and period_id not in allowed_period_ids:
-        return False
-
     return True
+
+
+def _plan_from_dates(payload: dict[str, Any]) -> str | None:
+    created_at = _extract_created_at(payload)
+    expires_at = _extract_expires_at(payload)
+    if created_at is None or expires_at is None:
+        return None
+    days = (expires_at - created_at).total_seconds() / 86400
+    if 20 <= days <= 45:
+        return "1m"
+    if 70 <= days <= 120:
+        return "3m"
+    if 150 <= days <= 220:
+        return "6m"
+    return None
 
 
 async def _plan_from_amount(payload: dict[str, Any]) -> str | None:
@@ -470,6 +561,15 @@ def _extract_amount(payload: dict[str, Any]) -> int:
 
 def _extract_expires_at(payload: dict[str, Any]):
     raw = payload.get("expires_at") or payload.get("expiresAt") or payload.get("subscription_expires_at")
+    return _parse_tribute_datetime(raw)
+
+
+def _extract_created_at(payload: dict[str, Any]):
+    raw = payload.get("created_at") or payload.get("createdAt") or payload.get("paid_at") or payload.get("paidAt")
+    return _parse_tribute_datetime(raw)
+
+
+def _parse_tribute_datetime(raw):
     if not raw:
         return None
     text = str(raw).strip()
@@ -536,6 +636,51 @@ def _subscription_event_id(name: str, payload: dict[str, Any], data: dict[str, A
         f"{name}:"
         f"{_extract_subscription_id(payload)}:"
         f"{_extract_period_id(payload)}:"
+        f"{_extract_telegram_user_id(payload)}:"
+        f"{raw}"
+    )
+
+
+def _digital_product_external_ref(payload: dict[str, Any], data: dict[str, Any]) -> str:
+    raw = _first_value(
+        payload,
+        data,
+        "purchase_id",
+        "purchaseId",
+        "transaction_id",
+        "transactionId",
+        "payment_id",
+        "paymentId",
+        "invoice_id",
+        "invoiceId",
+        "product_id",
+        "productId",
+    ) or ""
+    return f"digital_product:{raw}"
+
+
+def _digital_product_event_id(name: str, payload: dict[str, Any], data: dict[str, Any]) -> str:
+    raw = _first_value(
+        payload,
+        data,
+        "purchase_id",
+        "purchaseId",
+        "transaction_id",
+        "transactionId",
+        "payment_id",
+        "paymentId",
+        "invoice_id",
+        "invoiceId",
+        "created_at",
+        "createdAt",
+        "sent_at",
+        "sentAt",
+    ) or uuid.uuid4().hex
+    product_id = _first_value(payload, data, "product_id", "productId", "id") or ""
+    return (
+        "tribute:digital_product:"
+        f"{name}:"
+        f"{product_id}:"
         f"{_extract_telegram_user_id(payload)}:"
         f"{raw}"
     )

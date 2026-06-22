@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from aiogram import Bot
@@ -10,17 +11,58 @@ from ..config import ADMIN_ID, TG_CHANNEL_URL, ZIP_FILE_PATH
 from ..database import (
     get_latest_purchase_for_user,
     insert_purchase,
+    list_pending_purchase_deliveries_for_user,
+    mark_purchase_delivery_status,
+    mark_purchase_delivery_status_by_token,
     update_api_token_expiration,
     update_purchase_expiration,
 )
 from ..keyboards import post_purchase_kb
 from .payment_review import METHOD_LABELS
+from .plans import PLAN_LABELS
 from .settings_service import get_promotion_status
 from .token_service import TokenGenerationError, issue_tokens
 
 log = logging.getLogger(__name__)
 
 PAYMENT_METHOD_LABEL = METHOD_LABELS
+
+
+def _expiry_line(expires_at) -> str:
+    return (
+        "Срок действия: <b>бессрочный</b>"
+        if expires_at is None
+        else f"Действует до: <b>{expires_at.strftime('%d.%m.%Y %H:%M UTC')}</b>"
+    )
+
+
+def _purchase_text(*, plan_label: str, method_label: str, token: str, friend_token: str | None, expires_at) -> str:
+    text = (
+        "✅ <b>Оплата подтверждена</b>\n\n"
+        f"Тариф: <b>{plan_label}</b>\n"
+        f"Способ оплаты: <b>{method_label}</b>\n"
+        f"{_expiry_line(expires_at)}\n\n"
+        "🔑 <b>Ваш токен:</b>\n"
+        f"<code>{token}</code>\n\n"
+    )
+    if friend_token:
+        text += (
+            "🎁 <b>Токен «для друга»</b> (тот же срок):\n"
+            f"<code>{friend_token}</code>\n\n"
+        )
+    text += f"📖 Все инструкции — в канале:\n{TG_CHANNEL_URL}"
+    return text
+
+
+def _archive_caption() -> str:
+    return (
+        "Распаковать архив — перетащить папку из архива в папку по пути:\n"
+        "bin — arizona\n\n"
+        "Обязательно с заменой\n"
+        "(ваши скрипты не удалятся)\n\n"
+        "АКТИВАЦИЯ: F2 / /ryz\n\n"
+        "Нажмите CTRL + R, чтобы загрузить цены"
+    )
 
 
 async def deliver_purchase(
@@ -92,12 +134,18 @@ async def deliver_purchase(
         )
     text += f"📖 Все инструкции — в канале:\n{TG_CHANNEL_URL}"
 
-    await bot.send_message(
-        user_id,
-        text,
-        reply_markup=post_purchase_kb(),
-        disable_web_page_preview=True,
-    )
+    try:
+        await bot.send_message(
+            user_id,
+            text,
+            reply_markup=post_purchase_kb(),
+            disable_web_page_preview=True,
+        )
+        await mark_purchase_delivery_status_by_token(token, "delivered")
+    except Exception as exc:
+        log.warning("Purchase delivery postponed for user %s: %s", user_id, exc)
+        await mark_purchase_delivery_status_by_token(token, "failed")
+        return token
 
     zip_path = Path(ZIP_FILE_PATH)
     if zip_path.exists():
@@ -105,14 +153,7 @@ async def deliver_purchase(
             await bot.send_document(
                 user_id,
                 FSInputFile(zip_path, filename="Price_by_KALYVAN.zip"),
-                caption=(
-                    "Распаковать архив — перетащить папку из архива в папку по пути:\n"
-                    "bin — arizona\n\n"
-                    "Обязательно с заменой\n"
-                    "(ваши скрипты не удалятся)\n\n"
-                    "АКТИВАЦИЯ: F2 / /ryz\n\n"
-                    "Нажмите CTRL + R, чтобы загрузить цены"
-                ),
+                caption=_archive_caption(),
             )
         except Exception as exc:
             log.error("Failed to send ZIP to user %s: %s", user_id, exc)
@@ -128,6 +169,59 @@ async def deliver_purchase(
         user_id, plan_code, payment_method, token,
     )
     return token
+
+
+def _parse_purchase_expires_at(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+async def send_pending_purchase_deliveries(bot: Bot, user_id: int) -> int:
+    purchases = await list_pending_purchase_deliveries_for_user(user_id)
+    sent = 0
+    for purchase in purchases:
+        plan_code = purchase.get("plan_code", "")
+        token = purchase.get("token")
+        if not token:
+            continue
+        method = purchase.get("payment_method", "?")
+        expires_at = _parse_purchase_expires_at(purchase.get("expires_at"))
+        text = (
+            "✅ <b>Ранее оплаченная подписка найдена</b>\n\n"
+            + _purchase_text(
+                plan_label=PLAN_LABELS.get(plan_code, plan_code),
+                method_label=PAYMENT_METHOD_LABEL.get(method, method),
+                token=token,
+                friend_token=purchase.get("friend_token"),
+                expires_at=expires_at,
+            )
+        )
+        try:
+            await bot.send_message(user_id, text, reply_markup=post_purchase_kb(), disable_web_page_preview=True)
+            await mark_purchase_delivery_status(purchase["_id"], "delivered")
+            sent += 1
+        except Exception as exc:
+            log.warning("Pending purchase delivery failed for user %s: %s", user_id, exc)
+            await mark_purchase_delivery_status(purchase["_id"], "failed")
+            continue
+        zip_path = Path(ZIP_FILE_PATH)
+        if zip_path.exists():
+            try:
+                await bot.send_document(
+                    user_id,
+                    FSInputFile(zip_path, filename="Price_by_KALYVAN.zip"),
+                    caption=_archive_caption(),
+                )
+            except Exception as exc:
+                log.error("Failed to send pending ZIP to user %s: %s", user_id, exc)
+    return sent
 
 
 async def renew_latest_purchase(
