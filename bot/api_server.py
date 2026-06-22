@@ -371,8 +371,13 @@ async def lua_crypto_middleware(request: web.Request, handler):
         ts = int(envelope.get("ts") or 0)
         if seq <= 0 or seq in session["seenSeqs"]:
             return api_json({"status": "error", "message": "crypto_replay_detected"}, status=409)
-        if abs(int(time.time() * 1000) - ts) > LUA_API_CLOCK_SKEW_MS:
-            return api_json({"status": "error", "message": "crypto_clock_skew"}, status=400)
+        now_ms = int(time.time() * 1000)
+        adjusted_ts = ts + int(session.get("clockOffsetMs") or 0)
+        if min(abs(now_ms - ts), abs(now_ms - adjusted_ts)) > LUA_API_CLOCK_SKEW_MS:
+            return api_json(
+                {"status": "error", "message": "crypto_clock_skew", "serverTime": now_ms, "allowedSkewMs": LUA_API_CLOCK_SKEW_MS},
+                status=400,
+            )
 
         plain = decrypt_lua_payload(session, lua_aad("REQ", request, session["sid"], seq, ts), envelope)
         request["json_body"] = json.loads(plain.decode("utf-8")) if plain else {}
@@ -421,8 +426,8 @@ async def lua_crypto_handshake(request: web.Request) -> web.Response:
         payload = json.loads(decrypted.decode("utf-8"))
         now = int(time.time() * 1000)
         ts = int(payload.get("ts") or 0)
-        if abs(now - ts) > LUA_API_CLOCK_SKEW_MS:
-            return api_json({"status": "error", "message": "crypto_clock_skew"}, status=400)
+        client_clock_skew_ms = abs(now - ts) if ts > 0 else None
+        client_clock_offset_ms = now - ts if ts > 0 else 0
 
         aes_key = b64url_to_bytes(payload.get("aesKey"))
         if len(aes_key) != 32:
@@ -447,8 +452,17 @@ async def lua_crypto_handshake(request: web.Request) -> web.Response:
             "seenSeqs": set(),
             "seenSeqOrder": [],
             "expiresAt": expires_at,
+            "clockOffsetMs": client_clock_offset_ms,
         }
-        return api_json({"status": "ok", "sid": sid, "expiresAt": expires_at, "serverTime": now, "mode": LUA_API_CRYPTO_MODE})
+        return api_json({
+            "status": "ok",
+            "sid": sid,
+            "expiresAt": expires_at,
+            "serverTime": now,
+            "mode": LUA_API_CRYPTO_MODE,
+            "clientClockSkewMs": client_clock_skew_ms,
+            "clientClockOffsetMs": client_clock_offset_ms,
+        })
     except Exception:
         log.exception("Lua crypto handshake error")
         return api_json({"status": "error", "message": "invalid_crypto_handshake"}, status=400)
