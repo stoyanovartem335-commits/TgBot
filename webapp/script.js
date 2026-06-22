@@ -103,12 +103,38 @@
     }
   };
 
+  function normalizePercent(value) {
+    var pct = Number(value) || 0;
+    return Math.max(0, Math.min(100, Math.round(pct)));
+  }
+
+  function discountedPrice(price, pct) {
+    var original = Number(price) || 0;
+    var discount = normalizePercent(pct);
+    if (discount <= 0) return original;
+    return Math.round(original * (100 - discount) / 100);
+  }
+
+  function planDiscountPct(plan) {
+    var planPct = normalizePercent(plan && plan.discount_percentage);
+    if (plan && plan.discount_enabled && planPct > 0) return planPct;
+    if (discountEnabled && discountPct > 0) return normalizePercent(discountPct);
+    return 0;
+  }
+
+  function effectivePrice(plan, sourceKey, discountedKey) {
+    var original = Number(plan && plan[sourceKey]) || 0;
+    var backendPrice = Number(plan && plan[discountedKey]);
+    if (plan && plan.discount_enabled && !isNaN(backendPrice)) return backendPrice;
+    return discountedPrice(original, planDiscountPct(plan));
+  }
+
   function effectiveRubPrice(plan) {
-    var price = Number(plan && plan.price_rub) || 0;
-    if (discountEnabled && discountPct > 0) {
-      return Math.round(price * (100 - discountPct) / 100);
-    }
-    return price;
+    return effectivePrice(plan, 'price_rub', 'discounted_price_rub');
+  }
+
+  function effectiveStarsPrice(plan) {
+    return effectivePrice(plan, 'price_stars', 'discounted_price_stars');
   }
 
   function savingsPercent(plan, meta, baseMonthPrice) {
@@ -189,6 +215,7 @@
         months: 1
       };
       var benefitsList = planBenefits(plan, meta, baseMonthPrice);
+      var planDiscount = planDiscountPct(plan);
       var wrapper = document.createElement('div');
       wrapper.className = 'plan-card';
       wrapper.setAttribute('data-animate', '');
@@ -212,10 +239,10 @@
       var name = document.createElement('div');
       name.className = 'plan-card__name';
       name.textContent = meta.title || plan.label;
-      if (discountEnabled && discountPct > 0) {
+      if (planDiscount > 0) {
         var inlineDisc = document.createElement('span');
         inlineDisc.className = 'plan-card__discount-inline';
-        inlineDisc.textContent = '-' + discountPct + '%';
+        inlineDisc.textContent = '-' + planDiscount + '%';
         name.appendChild(inlineDisc);
       }
       top.appendChild(name);
@@ -246,9 +273,9 @@
       var rubBlock = document.createElement('div');
       rubBlock.className = 'plan-card__price-block';
 
-      if (discountEnabled && discountPct > 0) {
+      if (planDiscount > 0) {
         rubBlock.classList.add('plan-card__price-block--discounted');
-        var discountedRub = Math.round(plan.price_rub * (100 - discountPct) / 100);
+        var discountedRub = effectiveRubPrice(plan);
         var currentPriceRub = document.createElement('span');
         currentPriceRub.className = 'plan-card__price plan-card__price--current';
         currentPriceRub.textContent = discountedRub + '\u00a0₽';
@@ -269,9 +296,9 @@
       var starsBlock = document.createElement('div');
       starsBlock.className = 'plan-card__price-block';
 
-      if (discountEnabled && discountPct > 0) {
+      if (planDiscount > 0) {
         starsBlock.classList.add('plan-card__price-block--discounted');
-        var discountedStars = Math.round(plan.price_stars * (100 - discountPct) / 100);
+        var discountedStars = effectiveStarsPrice(plan);
         var currentPriceStars = document.createElement('span');
         currentPriceStars.className = 'plan-card__price plan-card__price--stars plan-card__price--current';
         currentPriceStars.textContent = discountedStars + '\u00a0⭐';
@@ -332,8 +359,8 @@
     })
     .then(function (data) {
       if (data.discount) {
-        discountEnabled = data.discount.enabled;
-        discountPct = data.discount.percentage || 0;
+        discountEnabled = !!data.discount.enabled;
+        discountPct = normalizePercent(data.discount.percentage);
       }
       renderPlans(data.plans || data);
     })

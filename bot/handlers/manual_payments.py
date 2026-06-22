@@ -67,7 +67,7 @@ def _admin_review_kb(payment_id: str) -> InlineKeyboardMarkup:
 async def _plan_price_rub(plan_code: str) -> int:
     settings = await get_settings()
     prices = settings.get("prices_rub", {})
-    return await price_with_active_discount(int(prices.get(plan_code, 0) or 0))
+    return await price_with_active_discount(int(prices.get(plan_code, 0) or 0), plan_code)
 
 
 async def _active_pending_text(user_id: int) -> str | None:

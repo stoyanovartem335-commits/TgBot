@@ -69,7 +69,7 @@ def _plan_code_from_payment_text(text: str, prefix: str) -> str | None:
 async def _send_tribute_payment(message: Message, user: User, plan_code: str, *, notify_error: bool) -> bool:
     settings = await get_settings()
     prices_rub = settings.get("prices_rub", {})
-    amount = await price_with_active_discount(prices_rub.get(plan_code, 0))
+    amount = await price_with_active_discount(prices_rub.get(plan_code, 0), plan_code)
     label = PLAN_LABELS.get(plan_code, plan_code)
 
     if amount <= 0:
@@ -529,7 +529,7 @@ async def _plan_from_amount(payload: dict[str, Any]) -> str | None:
     prices_rub = settings.get("prices_rub", {})
     matches: list[str] = []
     for code in PLAN_CODES:
-        price = await price_with_active_discount(int(prices_rub.get(code, 0)))
+        price = await price_with_active_discount(int(prices_rub.get(code, 0)), code)
         if price > 0 and amount in {price, price * 100}:
             matches.append(code)
     return matches[0] if len(matches) == 1 else None

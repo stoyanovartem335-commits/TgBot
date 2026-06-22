@@ -31,6 +31,7 @@ from ..database import (
 from ..services.api_client import create_subscription_token
 from ..services.payment_review import format_until, method_label, parse_block_duration, user_ref_html
 from ..services.plans import PLAN_CODES, PLAN_DAYS, PLAN_LABELS
+from ..services.settings_service import normalize_discounts
 from ..services.token_service import compute_expiration_str, generate_token
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ GSHEETS_REQUESTS_PAGE_SIZE = 10
 class AdminFSM(StatesGroup):
     waiting_price_rub = State()
     waiting_discount_pct = State()
+    waiting_plan_discount_pct = State()
     waiting_payment_ban_duration = State()
 
 
@@ -177,11 +179,48 @@ async def send_prices_panel(message: Message, *, notice: str | None = None) -> N
     await message.answer(text, reply_markup=kb)
 
 
-async def show_promo_panel(message: Message | None, *, notice: str | None = None) -> None:
+def _plan_discount_label(discounts: dict, code: str) -> str:
+    plan_discount = discounts["plans"].get(code, {"enabled": False, "percentage": 0})
+    plan_enabled = _is_true(plan_discount.get("enabled", False)) and int(plan_discount.get("percentage", 0) or 0) > 0
+    global_enabled = _is_true(discounts.get("enabled", False)) and int(discounts.get("percentage", 0) or 0) > 0
+    if plan_enabled:
+        return f"своя {plan_discount.get('percentage', 0)}%"
+    if global_enabled:
+        return f"общая {discounts.get('percentage', 0)}%"
+    return "нет"
+
+
+def _promo_panel_markup(discounts: dict, promo_enabled: bool) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text="🌐 Выключить общую скидку" if discounts["enabled"] else "🌐 Включить общую скидку",
+                callback_data="adm:toggle_discount",
+            )
+        ],
+        [InlineKeyboardButton(text="📈 % общей скидки", callback_data="adm:set_discount_pct")],
+    ]
+    for code in PLAN_CODES:
+        plan_discount = discounts["plans"].get(code, {"enabled": False, "percentage": 0})
+        plan_enabled = _is_true(plan_discount.get("enabled", False)) and int(plan_discount.get("percentage", 0) or 0) > 0
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{PLAN_LABELS[code]}: выкл свою" if plan_enabled else f"{PLAN_LABELS[code]}: вкл свою",
+                callback_data=f"adm:toggle_plan_discount:{code}",
+            ),
+            InlineKeyboardButton(text=f"% {PLAN_LABELS[code]}", callback_data=f"adm:set_plan_discount_pct:{code}"),
+        ])
+    rows.extend([
+        [InlineKeyboardButton(text="🎁 Выключить 1+1" if promo_enabled else "🎁 Включить 1+1", callback_data="adm:toggle_promo")],
+        [_back_kb()],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _promo_panel_payload(notice: str | None = None) -> tuple[str, InlineKeyboardMarkup]:
     settings = await get_settings()
-    discounts = settings.get("discounts", {})
+    discounts = normalize_discounts(settings.get("discounts", {}))
     promotion = settings.get("promotion", {})
-    discount_enabled = _is_true(discounts.get("enabled", False))
     promo_enabled = _is_true(promotion.get("enabled", False))
     promo_text = promotion.get("text") or "Купи 1 токен → получи 1 токен для друга"
 
@@ -190,42 +229,26 @@ async def show_promo_panel(message: Message | None, *, notice: str | None = None
         text += f"{notice}\n\n"
     text += (
         "🎁 <b>Акции и промо</b>\n\n"
-        f"Скидка: <b>{_status(discount_enabled)}</b> ({discounts.get('percentage', 0)}%)\n"
+        f"Общая скидка: <b>{_status(discounts['enabled'])}</b> ({discounts['percentage']}%)\n\n"
+        "Индивидуальные скидки:\n"
+    )
+    for code in PLAN_CODES:
+        text += f"• {PLAN_LABELS[code]}: <b>{_plan_discount_label(discounts, code)}</b>\n"
+    text += (
+        "\n"
         f"1 токен тебе + 1 другу: <b>{_status(promo_enabled)}</b>\n"
         f"Текст: {promo_text}"
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Выключить скидку" if discount_enabled else "🔄 Включить скидку", callback_data="adm:toggle_discount")],
-        [InlineKeyboardButton(text="🎁 Выключить 1+1" if promo_enabled else "🎁 Включить 1+1", callback_data="adm:toggle_promo")],
-        [InlineKeyboardButton(text="📈 Уст. % скидки", callback_data="adm:set_discount_pct")],
-        [_back_kb()],
-    ])
+    return text, _promo_panel_markup(discounts, promo_enabled)
+
+
+async def show_promo_panel(message: Message | None, *, notice: str | None = None) -> None:
+    text, kb = await _promo_panel_payload(notice)
     await _edit_or_send(message, text, kb)
 
 
 async def send_promo_panel(message: Message, *, notice: str | None = None) -> None:
-    settings = await get_settings()
-    discounts = settings.get("discounts", {})
-    promotion = settings.get("promotion", {})
-    discount_enabled = _is_true(discounts.get("enabled", False))
-    promo_enabled = _is_true(promotion.get("enabled", False))
-    promo_text = promotion.get("text") or "Купи 1 токен → получи 1 токен для друга"
-
-    text = ""
-    if notice:
-        text += f"{notice}\n\n"
-    text += (
-        "🎁 <b>Акции и промо</b>\n\n"
-        f"Скидка: <b>{_status(discount_enabled)}</b> ({discounts.get('percentage', 0)}%)\n"
-        f"1 токен тебе + 1 другу: <b>{_status(promo_enabled)}</b>\n"
-        f"Текст: {promo_text}"
-    )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Выключить скидку" if discount_enabled else "🔄 Включить скидку", callback_data="adm:toggle_discount")],
-        [InlineKeyboardButton(text="🎁 Выключить 1+1" if promo_enabled else "🎁 Включить 1+1", callback_data="adm:toggle_promo")],
-        [InlineKeyboardButton(text="📈 Уст. % скидки", callback_data="adm:set_discount_pct")],
-        [_back_kb()],
-    ])
+    text, kb = await _promo_panel_payload(notice)
     await message.answer(text, reply_markup=kb)
 
 
@@ -611,7 +634,7 @@ async def adm_toggle_discount(call: CallbackQuery) -> None:
     if not _is_admin(call.from_user.id if call.from_user else None):
         return
     settings = await get_settings()
-    discounts = settings.get("discounts", {})
+    discounts = normalize_discounts(settings.get("discounts", {}))
     discounts["enabled"] = not _is_true(discounts.get("enabled", False))
     await update_settings({"discounts": discounts})
     await call.answer("Скидка " + ("включена" if discounts["enabled"] else "выключена"))
@@ -657,11 +680,83 @@ async def adm_save_discount_pct(message: Message, state: FSMContext) -> None:
         return
 
     settings = await get_settings()
-    discounts = settings.get("discounts", {})
+    discounts = normalize_discounts(settings.get("discounts", {}))
     discounts["percentage"] = pct
     await update_settings({"discounts": discounts})
     await state.clear()
     await send_promo_panel(message, notice=f"✅ Процент скидки установлен: <b>{pct}%</b>")
+
+
+@router.callback_query(F.data.startswith("adm:toggle_plan_discount:"))
+async def adm_toggle_plan_discount(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    code = (call.data or "").rsplit(":", 1)[-1]
+    if code not in PLAN_CODES:
+        await call.answer("Тариф не найден", show_alert=True)
+        return
+    settings = await get_settings()
+    discounts = normalize_discounts(settings.get("discounts", {}))
+    plan_discount = discounts["plans"][code]
+    current_enabled = _is_true(plan_discount.get("enabled", False)) and int(plan_discount.get("percentage", 0) or 0) > 0
+    if current_enabled:
+        plan_discount["enabled"] = False
+    else:
+        if int(plan_discount.get("percentage", 0) or 0) <= 0:
+            plan_discount["percentage"] = discounts["percentage"] if int(discounts.get("percentage", 0) or 0) > 0 else 10
+        plan_discount["enabled"] = True
+    await update_settings({"discounts": discounts})
+    await call.answer(f"{PLAN_LABELS.get(code, code)}: {'своя скидка включена' if plan_discount['enabled'] else 'своя скидка выключена'}")
+    await show_promo_panel(call.message)
+
+
+@router.callback_query(F.data.startswith("adm:set_plan_discount_pct:"))
+async def adm_set_plan_discount_pct(call: CallbackQuery, state: FSMContext) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    code = (call.data or "").rsplit(":", 1)[-1]
+    if code not in PLAN_CODES:
+        await call.answer("Тариф не найден", show_alert=True)
+        return
+    await call.answer()
+    await state.set_state(AdminFSM.waiting_plan_discount_pct)
+    await state.update_data(discount_plan_code=code)
+    await _edit_or_send(
+        call.message,
+        f"Отправьте процент скидки для тарифа <b>{PLAN_LABELS.get(code, code)}</b> (0-100). Если указать 0, своя скидка тарифа выключится:",
+        InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]]),
+    )
+
+
+@router.message(AdminFSM.waiting_plan_discount_pct, F.text)
+async def adm_save_plan_discount_pct(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        return
+    data = await state.get_data()
+    code = data.get("discount_plan_code")
+    if code not in PLAN_CODES:
+        await state.clear()
+        await message.answer("Тариф не найден.")
+        return
+    try:
+        pct = int((message.text or "").strip())
+        if pct < 0 or pct > 100:
+            raise ValueError
+    except ValueError:
+        await message.answer("Отправьте число от 0 до 100.")
+        return
+
+    settings = await get_settings()
+    discounts = normalize_discounts(settings.get("discounts", {}))
+    discounts["plans"][code]["percentage"] = pct
+    discounts["plans"][code]["enabled"] = pct > 0
+    await update_settings({"discounts": discounts})
+    await state.clear()
+    if pct > 0:
+        notice = f"✅ Для тарифа <b>{PLAN_LABELS.get(code, code)}</b> установлена своя скидка: <b>{pct}%</b>"
+    else:
+        notice = f"✅ Своя скидка для тарифа <b>{PLAN_LABELS.get(code, code)}</b> выключена"
+    await send_promo_panel(message, notice=notice)
 
 
 @router.callback_query(F.data == "adm:stats")

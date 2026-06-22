@@ -72,7 +72,15 @@ async def init_db() -> None:
             "prices_stars": DEFAULT_PRICES_STARS,
             "highlighted_tariff": "3m",
             "tariff_descriptions": DEFAULT_TARIFF_DESCRIPTIONS,
-            "discounts": {"enabled": False, "percentage": 10, "duration_days": 30},
+            "discounts": {
+                "enabled": False,
+                "percentage": 10,
+                "duration_days": 30,
+                "plans": {
+                    code: {"enabled": False, "percentage": 0}
+                    for code in PLAN_CODES
+                },
+            },
             "promotion": {"enabled": False, "text": "Купи 1 токен → получи 1 токен для друга"},
             "banner_text": "",
             "marketing_text": "",

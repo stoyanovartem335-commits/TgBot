@@ -25,7 +25,7 @@ async def _send_stars_invoice(message: Message, plan_code: str, *, notify_error:
     settings = await get_settings()
     prices_stars = settings.get("prices_stars", {})
 
-    stars_price = await price_with_active_discount(prices_stars.get(plan_code, 0))
+    stars_price = await price_with_active_discount(prices_stars.get(plan_code, 0), plan_code)
     label = PLAN_LABELS.get(plan_code, plan_code)
 
     if stars_price <= 0:

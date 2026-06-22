@@ -55,12 +55,14 @@ async def nosleep_handler(request: web.Request) -> web.Response:
 async def plans_json_handler(request: web.Request) -> web.Response:
     plans = await get_plans_from_settings()
     settings = await get_settings()
-    discounts = settings.get("discounts", {})
+    from .services.settings_service import normalize_discounts
+    discounts = normalize_discounts(settings.get("discounts", {}))
     return web.json_response({
         "plans": plans,
         "discount": {
             "enabled": discounts.get("enabled", False),
-            "percentage": discounts.get("percentage", 0)
+            "percentage": discounts.get("percentage", 0),
+            "plans": discounts.get("plans", {}),
         }
     })
 
@@ -138,21 +140,14 @@ async def select_plan_api_handler(request: web.Request) -> web.Response:
     if not user_id:
         return web.json_response({"ok": False, "error": "missing user id"}, status=400)
 
-    from .services.settings_service import get_plans_from_settings, get_active_discount, apply_discount
+    from .services.settings_service import get_plans_from_settings
     plans = await get_plans_from_settings()
     plan = next((p for p in plans if p["code"] == plan_code), None)
     if not plan:
         return web.json_response({"ok": False, "error": "invalid plan code"}, status=400)
 
-    discount_enabled, discount_pct = await get_active_discount()
-    price_rub = plan["price_rub"]
-    price_stars = plan["price_stars"]
-    if discount_enabled and discount_pct > 0:
-        price_rub = apply_discount(price_rub, discount_pct)
-        price_stars = apply_discount(price_stars, discount_pct)
-
     from .keyboards import payment_methods_kb
-    text = selected_plan_text(plan["label"], price_rub, price_stars)
+    text = selected_plan_text(plan["label"], plan["discounted_price_rub"], plan["discounted_price_stars"])
 
     bot = request.app.get("bot")
     if not bot:

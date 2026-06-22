@@ -8,7 +8,7 @@ from aiogram.types import Message
 
 from ..keyboards import payment_methods_kb
 from ..services.payment_flow import selected_plan_text
-from ..services.settings_service import apply_discount, get_active_discount, get_plans_from_settings
+from ..services.settings_service import get_plans_from_settings
 
 log = logging.getLogger(__name__)
 router = Router(name="webapp")
@@ -32,12 +32,8 @@ async def on_webapp_data(message: Message) -> None:
     plans = await get_plans_from_settings()
     plan = next((item for item in plans if item["code"] == plan_code), None)
     plan_label = plan["label"] if plan else payload.get("label", plan_code)
-    price_rub = plan["price_rub"] if plan else payload.get("price_rub", 0)
-    price_stars = plan["price_stars"] if plan else payload.get("price_stars", 0)
-    discount_enabled, discount_pct = await get_active_discount()
-    if discount_enabled and discount_pct > 0:
-        price_rub = apply_discount(price_rub, discount_pct)
-        price_stars = apply_discount(price_stars, discount_pct)
+    price_rub = plan["discounted_price_rub"] if plan else payload.get("price_rub", 0)
+    price_stars = plan["discounted_price_stars"] if plan else payload.get("price_stars", 0)
 
     await message.answer(
         selected_plan_text(plan_label, price_rub, price_stars, "💰"),
