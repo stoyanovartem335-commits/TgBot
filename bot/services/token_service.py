@@ -29,16 +29,22 @@ async def issue_tokens(
     days: int | None,
     count: int = 2,
     expires_at=None,
+    client_id_base: str | None = None,
 ) -> list[str]:
     tokens = []
     expiration_str = expires_at.strftime("%d.%m.%Y") if expires_at else compute_expiration_str(plan_code, days)
+    base = (client_id_base or "").strip()
 
     for i in range(count):
         token = generate_token()
+        client_id = None
+        if base:
+            client_id = base if i == 0 else f"{base}_TokenForFriend"
         try:
             await create_subscription_token(
                 key_part2=token,
-                is_public=True,
+                client_id=client_id,
+                is_public=False,
                 subscription_expiration=expiration_str,
             )
             tokens.append(token)

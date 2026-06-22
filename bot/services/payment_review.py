@@ -9,7 +9,7 @@ METHOD_LABELS = {
     "funpay": "Fun Pay",
     "requisites": "Реквизиты РБ 🇧🇾 | РФ 🇷🇺",
     "stars": "Telegram Stars",
-    "triboote": "Tribute",
+    "triboote": "🌍 Для любых стран [ Tribute ]",
 }
 
 

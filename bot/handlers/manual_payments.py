@@ -19,7 +19,6 @@ from ..database import (
     get_settings,
     hide_saved_manual_requests_for_user,
     list_manual_requests_for_user,
-    mark_pending_status,
     set_payment_block,
     update_pending_fields,
 )
@@ -30,7 +29,7 @@ from ..services.plans import PLAN_DAYS, PLAN_LABELS, plan_code_by_label
 from ..services.settings_service import price_with_active_discount
 
 router = Router(name="manual_payments")
-REQUESTS_PAGE_SIZE = 10
+REQUESTS_PAGE_SIZE = 20
 
 
 class ManualPaymentFSM(StatesGroup):
@@ -47,10 +46,15 @@ def _plan_code_from_payment_text(text: str, prefix: str) -> str | None:
     return plan_code_by_label(raw)
 
 
-def _manual_paid_kb(payment_id: str) -> InlineKeyboardMarkup:
+def _manual_paid_kb(method: str, plan_code: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"manual:paid:{payment_id}")],
-        [InlineKeyboardButton(text="↩️ Отменить заявку", callback_data=f"manual:cancel:{payment_id}")],
+        [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"manual:paid:{method}:{plan_code}")],
+    ])
+
+
+def _cancel_action_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ Отменить действие", callback_data="manual:fsm_cancel")],
     ])
 
 
@@ -101,6 +105,42 @@ def _request_title(item: dict) -> str:
     return f"{method} | {plan} | {status}"
 
 
+def _format_request_time(value: str | None) -> str:
+    if not value:
+        return "неизвестно"
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return str(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).strftime("%d.%m.%Y %H:%M UTC")
+
+
+def _request_dates_text(item: dict) -> str:
+    lines = [f"Подана: <b>{_format_request_time(item.get('submitted_at') or item.get('created_at'))}</b>"]
+    if item.get("canceled_at"):
+        lines.append(f"Отменена: <b>{_format_request_time(item.get('canceled_at'))}</b>")
+    if item.get("rejected_at"):
+        lines.append(f"Отклонена: <b>{_format_request_time(item.get('rejected_at'))}</b>")
+    if item.get("reviewed_at"):
+        lines.append(f"Обработана: <b>{_format_request_time(item.get('reviewed_at'))}</b>")
+    if item.get("blocked_at"):
+        lines.append(f"Блокировка: <b>{_format_request_time(item.get('blocked_at'))}</b>")
+    if item.get("block_expires_at"):
+        lines.append(f"До: <b>{_format_request_time(item.get('block_expires_at'))}</b>")
+    return "\n".join(lines)
+
+
+def _request_tokens_text(item: dict) -> str:
+    parts = []
+    if item.get("token"):
+        parts.append(f"Токен: <code>{html.escape(str(item.get('token')))}</code>")
+    if item.get("friend_token"):
+        parts.append(f"Токен для друга: <code>{html.escape(str(item.get('friend_token')))}</code>")
+    return "\n".join(parts)
+
+
 def _request_detail_text(item: dict) -> str:
     method = item.get("payment_method", "?")
     plan_code = item.get("plan_code", "?")
@@ -110,10 +150,14 @@ def _request_detail_text(item: dict) -> str:
         f"Тариф: <b>{PLAN_LABELS.get(plan_code, plan_code)}</b>\n"
         f"Сумма: <b>{item.get('amount_rub', 0)} ₽</b>\n"
         f"Статус: <b>{_status_label(item.get('status', '?'))}</b>\n"
+        f"{_request_dates_text(item)}\n"
         f"ID: <code>{html.escape(item.get('payment_id', ''))}</code>"
     )
     if item.get("payer_name"):
         text += f"\nПлательщик: <b>{html.escape(item.get('payer_name'))}</b>"
+    tokens_text = _request_tokens_text(item)
+    if tokens_text:
+        text += f"\n\n{tokens_text}"
     return text
 
 
@@ -137,6 +181,8 @@ async def _show_request_detail(call: CallbackQuery, item: dict) -> None:
     payment_id = item["payment_id"]
     status = item.get("status")
     rows = []
+    if item.get("proof_file_id"):
+        rows.append([InlineKeyboardButton(text="🖼 Показать скриншот", callback_data=f"manual:photo:{payment_id}")])
     if status in {"pending", "pending_review"}:
         rows.append([InlineKeyboardButton(text="✏️ Изменить скриншот", callback_data=f"manual:edit:{payment_id}")])
         rows.append([InlineKeyboardButton(text="↩️ Отменить заявку", callback_data=f"manual:cancel:{payment_id}")])
@@ -197,7 +243,7 @@ async def _show_my_requests_page(
         else:
             await target.answer(text, reply_markup=main_menu_kb())
         return
-    text += f"Страница <b>{page + 1}/{pages}</b>\n\nВыберите заявку:"
+    text += f"Страница <b>{page + 1}/{pages}</b>\n\nАктивные и последние заявки:"
     markup = InlineKeyboardMarkup(inline_keyboard=_request_page_rows(items, page, total))
     if edit:
         await target.edit_text(text, reply_markup=markup)
@@ -209,11 +255,13 @@ async def _show_request_detail_page(call: CallbackQuery, item: dict, *, page: in
     payment_id = item["payment_id"]
     status = item.get("status")
     rows = []
+    if item.get("proof_file_id"):
+        rows.append([InlineKeyboardButton(text="🖼 Показать скриншот", callback_data=f"manual:photo:{payment_id}:{_safe_page(page)}")])
     if status in {"pending", "pending_review"}:
-        rows.append([InlineKeyboardButton(text="✏️ Изменить скриншот", callback_data=f"manual:edit:{payment_id}")])
-        rows.append([InlineKeyboardButton(text="↩️ Отменить заявку", callback_data=f"manual:cancel:{payment_id}")])
+        rows.append([InlineKeyboardButton(text="✏️ Изменить скриншот", callback_data=f"manual:edit:{payment_id}:{_safe_page(page)}")])
+        rows.append([InlineKeyboardButton(text="↩️ Отменить заявку", callback_data=f"manual:cancel:{payment_id}:{_safe_page(page)}")])
     else:
-        rows.append([InlineKeyboardButton(text="🗑 Скрыть из списка", callback_data=f"manual:hide:{payment_id}")])
+        rows.append([InlineKeyboardButton(text="🗑 Скрыть из списка", callback_data=f"manual:hide:{payment_id}:{_safe_page(page)}")])
     rows.append([InlineKeyboardButton(text="↩️ К моим заявкам", callback_data=f"manual:my:{_safe_page(page)}")])
     if call.message:
         await call.message.edit_text(_request_detail_text(item), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
@@ -234,16 +282,6 @@ async def on_my_requests_callback(call: CallbackQuery) -> None:
     if call.message:
         await _show_my_requests_page(call.message, call.from_user.id, edit=True)
         return
-        items = await list_manual_requests_for_user(call.from_user.id, page=0, limit=REQUESTS_PAGE_SIZE)
-        text = "🧾 <b>Мои заявки</b>\n\n"
-        if not items:
-            await call.message.edit_text(text + "Заявок пока нет.")
-            return
-        rows = [
-            [InlineKeyboardButton(text=_request_title(item), callback_data=f"manual:view:{item['payment_id']}")]
-            for item in items
-        ]
-        await call.message.edit_text(text + "Выберите заявку:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @router.callback_query(F.data.startswith("manual:my:"))
@@ -304,7 +342,32 @@ async def on_my_request_hide(call: CallbackQuery) -> None:
     if call.message:
         await _show_my_requests_page(call.message, call.from_user.id, notice="Заявка удалена из вашего списка.", page=page, edit=True)
         return
-        await call.message.edit_text("Заявка скрыта из вашего списка.")
+
+
+@router.callback_query(F.data.startswith("manual:photo:"))
+async def on_my_request_photo(call: CallbackQuery) -> None:
+    if call.from_user is None:
+        return
+    parts = (call.data or "").split(":")
+    payment_id = parts[2] if len(parts) > 2 else ""
+    page = _safe_page(parts[3] if len(parts) > 3 else 0)
+    item = await get_pending(payment_id)
+    if item is None or item.get("user_id") != call.from_user.id or item.get("user_hidden") is True:
+        await call.answer("Заявка не найдена", show_alert=True)
+        return
+    photo_id = item.get("proof_file_id")
+    if not photo_id:
+        await call.answer("Скриншот не найден", show_alert=True)
+        return
+    await call.answer()
+    if call.message:
+        await call.message.answer_photo(
+            photo_id,
+            caption=f"Скриншот по заявке <code>{html.escape(payment_id)}</code>",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="↩️ К моим заявкам", callback_data=f"manual:my:{page}")]
+            ]),
+        )
 
 
 @router.callback_query(F.data.startswith("manual:edit:"))
@@ -322,19 +385,19 @@ async def on_my_request_edit(call: CallbackQuery, state: FSMContext) -> None:
         await call.answer("Эту заявку уже нельзя редактировать", show_alert=True)
         return
     await update_pending_fields(payment_id, {"status": "pending"})
-    await state.update_data(payment_id=payment_id)
+    await state.update_data(payment_id=payment_id, return_page=page)
     await call.answer()
     if item.get("payment_method") == "requisites" and not item.get("payer_name"):
         await state.set_state(ManualPaymentFSM.waiting_requisites_payer)
         if call.message:
-            await call.message.answer("Напишите имя и фамилию плательщика.")
+            await call.message.answer("Напишите имя и фамилию плательщика.", reply_markup=_cancel_action_kb())
         return
     if item.get("payment_method") == "requisites":
         await state.set_state(ManualPaymentFSM.waiting_requisites_screenshot)
     else:
         await state.set_state(ManualPaymentFSM.waiting_funpay_screenshot)
     if call.message:
-        await call.message.answer("Пришлите новый скриншот оплаты одним изображением.")
+        await call.message.answer("Пришлите новый скриншот оплаты одним изображением.", reply_markup=_cancel_action_kb())
 
 
 def _status_label(status: str) -> str:
@@ -364,17 +427,6 @@ async def _start_manual_payment(message: Message, user, method: str, plan_code: 
 
     amount = await _plan_price_rub(plan_code)
     label = PLAN_LABELS.get(plan_code, plan_code)
-    payment_id = f"mp{uuid.uuid4().hex}"
-
-    await create_pending(
-        payment_id=payment_id,
-        user_id=user.id,
-        username=user.username,
-        full_name=user_full_name(user),
-        plan_code=plan_code,
-        payment_method=method,
-        extra={"amount_rub": amount},
-    )
 
     if method == "funpay":
         url = FUNPAY_URLS.get(plan_code, "")
@@ -401,7 +453,7 @@ async def _start_manual_payment(message: Message, user, method: str, plan_code: 
             "4. Пришлите скриншот перевода."
         )
 
-    await message.answer(text, reply_markup=_manual_paid_kb(payment_id), disable_web_page_preview=True)
+    await message.answer(text, reply_markup=_manual_paid_kb(method, plan_code), disable_web_page_preview=True)
 
 
 @router.message(F.text.startswith(BTN_PAY_FUNPAY))
@@ -458,33 +510,53 @@ async def on_manual_cancel(call: CallbackQuery, state: FSMContext) -> None:
     if pending.get("status") not in {"pending", "pending_review"}:
         await call.answer("Эта заявка уже обработана", show_alert=True)
         return
-    await mark_pending_status(payment_id, "canceled")
+    await update_pending_fields(payment_id, {"status": "canceled", "canceled_at": datetime.now(timezone.utc).isoformat()})
     await state.clear()
     await call.answer("Заявка отменена")
     if call.message:
         await _show_my_requests_page(call.message, call.from_user.id, notice="Заявка отменена.", page=page, edit=True)
         return
-        try:
-            await call.message.edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
-        await call.message.answer("Заявка отменена. Можно выбрать тариф заново.", reply_markup=main_menu_kb())
 
 
 @router.callback_query(F.data.startswith("manual:paid:"))
 async def on_manual_paid(call: CallbackQuery, state: FSMContext) -> None:
     if call.from_user is None:
         return
-    payment_id = call.data.split(":", 2)[2]
-    pending = await get_pending(payment_id)
-    if pending is None or pending.get("user_id") != call.from_user.id:
-        await call.answer("Заявка не найдена", show_alert=True)
-        return
-    if pending.get("status") != "pending":
-        await call.answer("Заявка уже обработана или находится на проверке", show_alert=True)
-        return
+    parts = (call.data or "").split(":")
+    pending = None
+    payment_id = None
+    if len(parts) >= 4 and parts[2] in {"funpay", "requisites"}:
+        method = parts[2]
+        plan_code = parts[3]
+        if plan_code not in PLAN_DAYS:
+            await call.answer("Тариф не найден", show_alert=True)
+            return
+        active_pending = await get_active_manual_pending(call.from_user.id)
+        if active_pending:
+            await call.answer("У вас уже есть активная заявка", show_alert=True)
+            if call.message:
+                await call.message.answer(await _active_pending_text(call.from_user.id) or "У вас уже есть активная заявка.", reply_markup=main_menu_kb())
+            return
+        amount = await _plan_price_rub(plan_code)
+        await state.update_data(
+            payment_method=method,
+            plan_code=plan_code,
+            amount_rub=amount,
+            username=call.from_user.username,
+            full_name=user_full_name(call.from_user),
+        )
+    else:
+        payment_id = call.data.split(":", 2)[2]
+        pending = await get_pending(payment_id)
+        if pending is None or pending.get("user_id") != call.from_user.id:
+            await call.answer("Заявка не найдена", show_alert=True)
+            return
+        if pending.get("status") != "pending":
+            await call.answer("Заявка уже обработана или находится на проверке", show_alert=True)
+            return
+        method = pending.get("payment_method")
+        await state.update_data(payment_id=payment_id)
 
-    method = pending.get("payment_method")
     if method not in {"funpay", "requisites"}:
         await call.answer("Неизвестный способ оплаты", show_alert=True)
         return
@@ -495,16 +567,15 @@ async def on_manual_paid(call: CallbackQuery, state: FSMContext) -> None:
             await call.message.answer(block_text, reply_markup=main_menu_kb())
         return
 
-    await state.update_data(payment_id=payment_id)
     await call.answer()
     if method == "funpay":
         await state.set_state(ManualPaymentFSM.waiting_funpay_screenshot)
         if call.message:
-            await call.message.answer("Пришлите скриншот оплаты FunPay одним изображением.")
+            await call.message.answer("Пришлите скриншот оплаты FunPay одним изображением.", reply_markup=_cancel_action_kb())
     else:
         await state.set_state(ManualPaymentFSM.waiting_requisites_payer)
         if call.message:
-            await call.message.answer("Напишите имя и фамилию плательщика, с которого был перевод.")
+            await call.message.answer("Напишите имя и фамилию плательщика, с которого был перевод.", reply_markup=_cancel_action_kb())
 
 
 @router.message(ManualPaymentFSM.waiting_requisites_payer, F.text)
@@ -519,7 +590,7 @@ async def on_requisites_payer(message: Message, state: FSMContext) -> None:
         await update_pending_fields(payment_id, {"payer_name": payer_name})
     await state.update_data(payer_name=payer_name)
     await state.set_state(ManualPaymentFSM.waiting_requisites_screenshot)
-    await message.answer("Теперь пришлите скриншот перевода одним изображением.")
+    await message.answer("Теперь пришлите скриншот перевода одним изображением.", reply_markup=_cancel_action_kb())
 
 
 @router.message(ManualPaymentFSM.waiting_funpay_screenshot, F.photo)
@@ -535,24 +606,82 @@ async def on_requisites_screenshot(message: Message, state: FSMContext) -> None:
 @router.message(ManualPaymentFSM.waiting_funpay_screenshot)
 @router.message(ManualPaymentFSM.waiting_requisites_screenshot)
 async def on_manual_waiting_not_photo(message: Message) -> None:
-    await message.answer("Нужно прислать именно изображение со скриншотом оплаты.")
+    await message.answer("Нужно прислать именно изображение со скриншотом оплаты.", reply_markup=_cancel_action_kb())
+
+
+@router.callback_query(F.data == "manual:fsm_cancel")
+async def on_manual_fsm_cancel(call: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    payment_id = data.get("payment_id")
+    if payment_id:
+        item = await get_pending(payment_id)
+        if item and item.get("status") == "pending" and item.get("proof_file_id"):
+            await update_pending_fields(payment_id, {"status": "pending_review"})
+    await state.clear()
+    await call.answer("Действие отменено")
+    if call.message:
+        await call.message.answer("Действие отменено.", reply_markup=main_menu_kb())
 
 
 async def _submit_manual_proof(message: Message, state: FSMContext, method: str) -> None:
     data = await state.get_data()
     payment_id = data.get("payment_id")
     pending = await get_pending(payment_id) if payment_id else None
-    if pending is None or pending.get("user_id") != (message.from_user.id if message.from_user else None):
+    user_id = message.from_user.id if message.from_user else None
+    if user_id is None:
+        await state.clear()
+        return
+    if payment_id and (pending is None or pending.get("user_id") != user_id):
         await state.clear()
         await message.answer("Заявка не найдена. Откройте витрину и выберите тариф заново.", reply_markup=main_menu_kb())
         return
-    if pending.get("status") != "pending":
+    if pending is not None and pending.get("status") != "pending":
         await state.clear()
         await message.answer("Эта заявка уже находится на проверке или обработана.", reply_markup=main_menu_kb())
         return
+    if pending is None:
+        active_pending = await get_active_manual_pending(user_id)
+        if active_pending:
+            await state.clear()
+            await message.answer(await _active_pending_text(user_id) or "У вас уже есть активная заявка.", reply_markup=main_menu_kb())
+            return
+        plan_code = data.get("plan_code")
+        if plan_code not in PLAN_DAYS:
+            await state.clear()
+            await message.answer("Тариф не найден. Откройте витрину и выберите тариф заново.", reply_markup=main_menu_kb())
+            return
+        payment_id = f"mp{uuid.uuid4().hex}"
+        payer_name = data.get("payer_name") if method == "requisites" else None
+        photo_id = message.photo[-1].file_id
+        await create_pending(
+            payment_id=payment_id,
+            user_id=user_id,
+            username=message.from_user.username,
+            full_name=user_full_name(message.from_user),
+            plan_code=plan_code,
+            payment_method=method,
+            initial_status="pending_review",
+            extra={
+                "amount_rub": int(data.get("amount_rub") or await _plan_price_rub(plan_code)),
+                "proof_file_id": photo_id,
+                "payer_name": payer_name,
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        pending = await get_pending(payment_id)
+        if pending is None:
+            await state.clear()
+            await message.answer("Не удалось сохранить заявку. Попробуйте ещё раз.", reply_markup=main_menu_kb())
+            return
+    else:
+        photo_id = message.photo[-1].file_id
+        await update_pending_fields(payment_id, {
+            "proof_file_id": photo_id,
+            "status": "pending_review",
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+        })
+        pending = await get_pending(payment_id) or pending
 
-    photo_id = message.photo[-1].file_id
-    await update_pending_fields(payment_id, {"proof_file_id": photo_id, "status": "pending_review"})
     await state.clear()
     await message.answer("Скриншот отправлен администратору. Дождитесь проверки.", reply_markup=main_menu_kb())
     await _send_admin_review(message, pending, photo_id)
@@ -602,7 +731,7 @@ async def on_manual_approve(call: CallbackQuery) -> None:
         await call.answer(f"Статус заявки: {pending.get('status')}", show_alert=True)
         return
     plan_code = pending.get("plan_code")
-    await deliver_purchase(
+    issued = await deliver_purchase(
         call.bot,
         user_id=pending["user_id"],
         username=pending.get("username"),
@@ -611,9 +740,19 @@ async def on_manual_approve(call: CallbackQuery) -> None:
         days=PLAN_DAYS.get(plan_code),
         payment_method=pending.get("payment_method", "manual"),
     )
-    await mark_pending_status(payment_id, "completed")
+    await update_pending_fields(payment_id, {
+        "status": "completed",
+        "token": issued.get("token"),
+        "friend_token": issued.get("friend_token"),
+        "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        "reviewed_by": call.from_user.id,
+    })
     await call.answer("Принято")
-    await _edit_review_message(call.message, "✅ <b>Заявка принята, токен выдан.</b>")
+    suffix = "✅ <b>Заявка принята, токен выдан.</b>\n\n"
+    suffix += f"Токен: <code>{html.escape(str(issued.get('token') or ''))}</code>"
+    if issued.get("friend_token"):
+        suffix += f"\nТокен для друга: <code>{html.escape(str(issued.get('friend_token')))}</code>"
+    await _edit_review_message(call.message, suffix)
 
 
 @router.callback_query(F.data.startswith("manual:no:"))
@@ -628,7 +767,11 @@ async def on_manual_reject(call: CallbackQuery) -> None:
     if pending.get("status") not in {"pending", "pending_review"}:
         await call.answer(f"Статус заявки: {pending.get('status')}", show_alert=True)
         return
-    await mark_pending_status(payment_id, "rejected")
+    await update_pending_fields(payment_id, {
+        "status": "rejected",
+        "rejected_at": datetime.now(timezone.utc).isoformat(),
+        "reviewed_by": call.from_user.id,
+    })
     try:
         await call.bot.send_message(pending["user_id"], "❌ Заявка отклонена. Если это ошибка, напишите в поддержку.", reply_markup=main_menu_kb())
     except Exception:
@@ -658,7 +801,22 @@ async def on_manual_block_start(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(ManualPaymentFSM.waiting_block_duration)
     await call.answer()
     if call.message:
-        await call.message.answer("Введите срок блокировки: например <code>6ч</code>, <code>12h</code>, <code>2д</code> или <code>3d</code>.")
+        await call.message.answer(
+            "Введите срок блокировки: например <code>6ч</code>, <code>12h</code>, <code>2д</code> или <code>3d</code>.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="↩️ Отменить действие", callback_data="manual:block_cancel")]
+            ]),
+        )
+
+
+@router.callback_query(F.data == "manual:block_cancel")
+async def on_manual_block_cancel(call: CallbackQuery, state: FSMContext) -> None:
+    if not call.from_user or call.from_user.id != ADMIN_ID:
+        return
+    await state.clear()
+    await call.answer("Действие отменено")
+    if call.message:
+        await call.message.answer("Действие отменено.")
 
 
 @router.message(ManualPaymentFSM.waiting_block_duration, F.text)
@@ -691,7 +849,15 @@ async def on_manual_block_duration(message: Message, state: FSMContext) -> None:
         full_name=pending.get("full_name"),
         admin_id=message.from_user.id,
     )
-    await mark_pending_status(payment_id, "rejected")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await update_pending_fields(payment_id, {
+        "status": "rejected",
+        "rejected_at": now_iso,
+        "blocked_at": now_iso,
+        "block_expires_at": expires_at.astimezone(timezone.utc).isoformat(),
+        "block_label": label,
+        "reviewed_by": message.from_user.id,
+    })
     try:
         await message.bot.send_message(
             pending["user_id"],

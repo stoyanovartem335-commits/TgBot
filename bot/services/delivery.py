@@ -28,6 +28,12 @@ log = logging.getLogger(__name__)
 PAYMENT_METHOD_LABEL = METHOD_LABELS
 
 
+def token_client_id(username: str | None, user_id: int, *, friend: bool = False) -> str:
+    raw = (username or "").strip().lstrip("@")
+    base = f"@{raw}" if raw else f"tg_{int(user_id)}"
+    return f"{base}_TokenForFriend" if friend else base
+
+
 def _expiry_line(expires_at) -> str:
     return (
         "Срок действия: <b>бессрочный</b>"
@@ -75,7 +81,7 @@ async def deliver_purchase(
     days: int | None,
     payment_method: str,
     expires_at_override=None,
-) -> str:
+) -> dict[str, str | None]:
     method_label = PAYMENT_METHOD_LABEL.get(payment_method, payment_method)
 
     promo_enabled, _ = await get_promotion_status()
@@ -84,7 +90,13 @@ async def deliver_purchase(
     expires_at = None if days is None else expires_at_override or paid_at + timedelta(days=days)
 
     try:
-        tokens = await issue_tokens(plan_code, days, count=2 if promo_enabled else 1, expires_at=expires_at)
+        tokens = await issue_tokens(
+            plan_code,
+            days,
+            count=2 if promo_enabled else 1,
+            expires_at=expires_at,
+            client_id_base=token_client_id(username, user_id),
+        )
     except TokenGenerationError as exc:
         log.error("Token generation failed for user %s: %s", user_id, exc)
         await bot.send_message(
@@ -145,7 +157,7 @@ async def deliver_purchase(
     except Exception as exc:
         log.warning("Purchase delivery postponed for user %s: %s", user_id, exc)
         await mark_purchase_delivery_status_by_token(token, "failed")
-        return token
+        return {"token": token, "friend_token": friend_token}
 
     zip_path = Path(ZIP_FILE_PATH)
     if zip_path.exists():
@@ -165,10 +177,10 @@ async def deliver_purchase(
         log.warning("ZIP file not found at %s", zip_path)
 
     log.info(
-        "Delivered: user=%s plan=%s method=%s token=%s",
-        user_id, plan_code, payment_method, token,
+        "Delivered: user=%s plan=%s method=%s token=%s friend_token=%s",
+        user_id, plan_code, payment_method, token, friend_token,
     )
-    return token
+    return {"token": token, "friend_token": friend_token}
 
 
 def _parse_purchase_expires_at(value):

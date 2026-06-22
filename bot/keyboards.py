@@ -16,7 +16,7 @@ BTN_NEWS = "📰 Новости Рынка"
 BTN_SUPPORT = "💬 Тех поддержка"
 BTN_MY_REQUESTS = "🧾 Мои заявки"
 BTN_PAY_STARS = "⭐ Telegram Stars"
-BTN_PAY_TRIBUTE = "💳 Tribute"
+BTN_PAY_TRIBUTE = "🌍 Для любых стран [ Tribute ]"
 BTN_PAY_FUNPAY = "🛒 Fun Pay"
 BTN_PAY_REQUISITES = "💳 Реквизиты РБ 🇧🇾 | РФ 🇷🇺"
 

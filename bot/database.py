@@ -59,6 +59,8 @@ async def init_db() -> None:
     await _db.bot_pending_payments.create_index([("user_id", 1), ("payment_method", 1), ("user_hidden", 1), ("_id", -1)])
     await _db.bot_pending_payments.create_index([("payment_method", 1), ("_id", -1)])
     await _db.bot_pending_payments.create_index([("payment_method", 1), ("created_at", 1)])
+    await _db.bot_pending_payments.create_index([("payment_method", 1), ("status", 1), ("_id", -1)])
+    await _db.bot_pending_payments.create_index([("user_id", 1), ("payment_method", 1), ("status", 1), ("user_hidden", 1), ("_id", -1)])
     await _db.bot_payment_blocks.create_index([("user_id", 1), ("payment_method", 1)], unique=True)
     await _db.bot_payment_blocks.create_index("expires_at")
     await _db.bot_gsheets_requests.create_index("user_id")
@@ -223,7 +225,10 @@ async def get_active_manual_pending(user_id: int) -> dict | None:
         {
             "user_id": user_id,
             "payment_method": {"$in": ["funpay", "requisites"]},
-            "status": {"$in": ["pending", "pending_review"]},
+            "$or": [
+                {"status": "pending_review"},
+                {"status": "pending", "proof_file_id": {"$exists": True}},
+            ],
             "user_hidden": {"$ne": True},
         },
         sort=[("_id", -1)],
@@ -233,6 +238,7 @@ async def get_active_manual_pending(user_id: int) -> dict | None:
 MANUAL_PAYMENT_METHODS = ["funpay", "requisites"]
 MANUAL_ACTIVE_STATUSES = ["pending", "pending_review"]
 MANUAL_REQUEST_RETENTION_DAYS = 3
+MANUAL_RECENT_CLOSED_LIMIT = 20
 
 
 def _manual_user_filter(user_id: int) -> dict:
@@ -247,6 +253,15 @@ def _manual_admin_filter() -> dict:
     return {"payment_method": {"$in": MANUAL_PAYMENT_METHODS}}
 
 
+def _manual_visible_active_filter() -> dict:
+    return {
+        "$or": [
+            {"status": "pending_review"},
+            {"status": "pending", "proof_file_id": {"$exists": True}},
+        ],
+    }
+
+
 async def cleanup_old_manual_requests(*, force: bool = False) -> int:
     global _manual_cleanup_cache_until
     now_dt = datetime.now(timezone.utc)
@@ -258,6 +273,10 @@ async def cleanup_old_manual_requests(*, force: bool = False) -> int:
     result = await db.bot_pending_payments.delete_many({
         "payment_method": {"$in": MANUAL_PAYMENT_METHODS},
         "created_at": {"$lt": cutoff},
+        "$or": [
+            {"status": {"$nin": MANUAL_ACTIVE_STATUSES}},
+            {"status": "pending", "proof_file_id": {"$exists": False}},
+        ],
     })
     return result.deleted_count
 
@@ -279,7 +298,10 @@ async def hide_saved_manual_requests_for_user(user_id: int) -> int:
 async def count_manual_requests_for_user(user_id: int) -> int:
     await cleanup_old_manual_requests()
     db = await get_db()
-    return await db.bot_pending_payments.count_documents(_manual_user_filter(user_id))
+    base_filter = _manual_user_filter(user_id)
+    active_count = await db.bot_pending_payments.count_documents({**base_filter, **_manual_visible_active_filter()})
+    closed_count = await db.bot_pending_payments.count_documents({**base_filter, "status": {"$nin": MANUAL_ACTIVE_STATUSES}})
+    return active_count + min(closed_count, MANUAL_RECENT_CLOSED_LIMIT)
 
 
 async def list_manual_requests_for_user(user_id: int, *, page: int = 0, limit: int = 10) -> list[dict]:
@@ -287,17 +309,31 @@ async def list_manual_requests_for_user(user_id: int, *, page: int = 0, limit: i
     db = await get_db()
     page = max(0, page)
     limit = max(1, min(limit, 50))
-    cursor = db.bot_pending_payments.find(
-        _manual_user_filter(user_id),
-        sort=[("_id", -1)],
-    ).skip(page * limit).limit(limit)
-    return await cursor.to_list(length=limit)
+    base_filter = _manual_user_filter(user_id)
+    offset = page * limit
+    active_filter = {**base_filter, **_manual_visible_active_filter()}
+    closed_filter = {**base_filter, "status": {"$nin": MANUAL_ACTIVE_STATUSES}}
+    active_count = await db.bot_pending_payments.count_documents(active_filter)
+    items: list[dict] = []
+    if offset < active_count:
+        active_cursor = db.bot_pending_payments.find(active_filter, sort=[("_id", -1)]).skip(offset).limit(limit)
+        items = await active_cursor.to_list(length=limit)
+    closed_offset = max(0, offset - active_count)
+    remaining = limit - len(items)
+    if remaining > 0 and closed_offset < MANUAL_RECENT_CLOSED_LIMIT:
+        closed_limit = min(remaining, MANUAL_RECENT_CLOSED_LIMIT - closed_offset)
+        closed_cursor = db.bot_pending_payments.find(closed_filter, sort=[("updated_at", -1), ("_id", -1)]).skip(closed_offset).limit(closed_limit)
+        items.extend(await closed_cursor.to_list(length=closed_limit))
+    return items
 
 
 async def count_manual_payment_requests() -> int:
     await cleanup_old_manual_requests()
     db = await get_db()
-    return await db.bot_pending_payments.count_documents(_manual_admin_filter())
+    base_filter = _manual_admin_filter()
+    active_count = await db.bot_pending_payments.count_documents({**base_filter, **_manual_visible_active_filter()})
+    closed_count = await db.bot_pending_payments.count_documents({**base_filter, "status": {"$nin": MANUAL_ACTIVE_STATUSES}})
+    return active_count + min(closed_count, MANUAL_RECENT_CLOSED_LIMIT)
 
 
 async def list_manual_payment_requests(*, page: int = 0, limit: int = 10) -> list[dict]:
@@ -305,11 +341,22 @@ async def list_manual_payment_requests(*, page: int = 0, limit: int = 10) -> lis
     db = await get_db()
     page = max(0, page)
     limit = max(1, min(limit, 50))
-    cursor = db.bot_pending_payments.find(
-        _manual_admin_filter(),
-        sort=[("_id", -1)],
-    ).skip(page * limit).limit(limit)
-    return await cursor.to_list(length=limit)
+    base_filter = _manual_admin_filter()
+    offset = page * limit
+    active_filter = {**base_filter, **_manual_visible_active_filter()}
+    closed_filter = {**base_filter, "status": {"$nin": MANUAL_ACTIVE_STATUSES}}
+    active_count = await db.bot_pending_payments.count_documents(active_filter)
+    items: list[dict] = []
+    if offset < active_count:
+        active_cursor = db.bot_pending_payments.find(active_filter, sort=[("_id", -1)]).skip(offset).limit(limit)
+        items = await active_cursor.to_list(length=limit)
+    closed_offset = max(0, offset - active_count)
+    remaining = limit - len(items)
+    if remaining > 0 and closed_offset < MANUAL_RECENT_CLOSED_LIMIT:
+        closed_limit = min(remaining, MANUAL_RECENT_CLOSED_LIMIT - closed_offset)
+        closed_cursor = db.bot_pending_payments.find(closed_filter, sort=[("updated_at", -1), ("_id", -1)]).skip(closed_offset).limit(closed_limit)
+        items.extend(await closed_cursor.to_list(length=closed_limit))
+    return items
 
 
 def _parse_iso_dt(value: str | None) -> datetime | None:

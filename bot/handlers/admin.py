@@ -36,7 +36,7 @@ from ..services.token_service import compute_expiration_str, generate_token
 
 log = logging.getLogger(__name__)
 router = Router(name="admin")
-PAYMENT_REQUESTS_PAGE_SIZE = 10
+PAYMENT_REQUESTS_PAGE_SIZE = 20
 GSHEETS_REQUESTS_PAGE_SIZE = 10
 
 class AdminFSM(StatesGroup):
@@ -302,6 +302,30 @@ def _request_button_title(item: dict) -> str:
     return f"{status} | {method} | {plan} | {user}"
 
 
+def _request_dates_text(item: dict) -> str:
+    lines = [f"Подана: <b>{_format_paid_at(str(item.get('submitted_at') or item.get('created_at') or ''))}</b>"]
+    if item.get("canceled_at"):
+        lines.append(f"Отменена: <b>{_format_paid_at(str(item.get('canceled_at')))}</b>")
+    if item.get("rejected_at"):
+        lines.append(f"Отклонена: <b>{_format_paid_at(str(item.get('rejected_at')))}</b>")
+    if item.get("reviewed_at"):
+        lines.append(f"Обработана: <b>{_format_paid_at(str(item.get('reviewed_at')))}</b>")
+    if item.get("blocked_at"):
+        lines.append(f"Блокировка: <b>{_format_paid_at(str(item.get('blocked_at')))}</b>")
+    if item.get("block_expires_at"):
+        lines.append(f"До: <b>{_format_paid_at(str(item.get('block_expires_at')))}</b>")
+    return "\n".join(lines)
+
+
+def _request_tokens_text(item: dict) -> str:
+    lines = []
+    if item.get("token"):
+        lines.append(f"Токен: <code>{html.escape(str(item.get('token')))}</code>")
+    if item.get("friend_token"):
+        lines.append(f"Токен для друга: <code>{html.escape(str(item.get('friend_token')))}</code>")
+    return "\n".join(lines)
+
+
 async def show_payment_requests_panel(message: Message | None, *, notice: str | None = None, page: int = 0) -> None:
     total = await count_manual_payment_requests()
     pages = _pages_count(total)
@@ -329,25 +353,9 @@ async def show_payment_requests_panel(message: Message | None, *, notice: str | 
     rows.append([_back_kb()])
     await _edit_or_send(
         message,
-        text + f"Страница <b>{page + 1}/{pages}</b>\n\nПоследние заявки:",
+        text + f"Страница <b>{page + 1}/{pages}</b>\n\nСначала непроверенные, затем последние закрытые:",
         InlineKeyboardMarkup(inline_keyboard=rows),
     )
-    return
-    items = await list_manual_payment_requests(page=0, limit=PAYMENT_REQUESTS_PAGE_SIZE)
-    text = ""
-    if notice:
-        text += f"{notice}\n\n"
-    text += "🧾 <b>Заявки оплат</b>\n\n"
-    if not items:
-        text += "Заявок пока нет."
-        await _edit_or_send(message, text, InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]]))
-        return
-    rows = [
-        [InlineKeyboardButton(text=_request_button_title(item), callback_data=f"adm:req:{item['payment_id']}")]
-        for item in items
-    ]
-    rows.append([_back_kb()])
-    await _edit_or_send(message, text + "Последние заявки:", InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 async def show_payment_request_detail(message: Message | None, item: dict, *, notice: str | None = None, page: int = 0) -> None:
@@ -364,9 +372,13 @@ async def show_payment_request_detail(message: Message | None, item: dict, *, no
         f"Сумма: <b>{item.get('amount_rub', 0)} ₽</b>\n"
         f"Статус: <b>{_request_status_label(item.get('status', '?'))}</b>\n"
         f"Пользователь: {user_ref_html(int(item.get('user_id', 0)), item.get('full_name'), item.get('username'))}\n"
+        f"{_request_dates_text(item)}\n"
     )
     if item.get("payer_name"):
         text += f"Плательщик: <b>{html.escape(str(item.get('payer_name')))}</b>\n"
+    tokens_text = _request_tokens_text(item)
+    if tokens_text:
+        text += f"\n{tokens_text}\n"
     text += f"Payment ID: <code>{html.escape(payment_id)}</code>"
 
     rows = []
@@ -545,7 +557,8 @@ async def adm_generate_token(call: CallbackQuery) -> None:
     try:
         await create_subscription_token(
             key_part2=token,
-            is_public=True,
+            client_id=f"admin_{plan_code}",
+            is_public=False,
             subscription_expiration=exp_str,
         )
     except Exception as exc:
