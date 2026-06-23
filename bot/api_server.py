@@ -32,6 +32,7 @@ LUA_API_SESSION_TTL_MS = int(os.getenv("LUA_API_SESSION_TTL_MS") or str(10 * 60 
 LUA_API_CLOCK_SKEW_MS = int(os.getenv("LUA_API_CLOCK_SKEW_MS") or str(90 * 1000))
 LUA_API_PRIVATE_JWK_B64 = os.getenv("LUA_API_RSA_PRIVATE_JWK_B64") or ""
 AVERAGE_PRICES_CACHE_TTL = int(os.getenv("AVERAGE_PRICES_CACHE_TTL") or "60000")
+REFERENCE_DATA_CACHE_TTL = int(os.getenv("REFERENCE_DATA_CACHE_TTL") or "60000")
 
 TABLE_CSV_URL = os.getenv("TABLE_CSV_URL") or "https://docs.google.com/spreadsheets/d/1uhTTihRjsZaAv60WlfTrA070ImciZQO7UBkeVtmZkkM/export?format=csv&gid=0"
 ANALOGUES_CSV_URL = os.getenv("ANALOGUES_CSV_URL") or "https://docs.google.com/spreadsheets/d/1xF9b1-obvbrB0nZ9jNrjLTGMJnTPwfKxF42Uv1RgPsk/export?format=csv&gid=0"
@@ -44,6 +45,9 @@ CFG_SERVER_NAMES = [
     "Wednesday", "Yava", "Faraway", "Bumble-Bee", "Christmas", "Mirage", "Love", "Drake", "Space",
 ]
 
+_table_cache: dict[str, Any] = {"json": None, "ts": 0.0, "lock": asyncio.Lock()}
+_analogues_cache: dict[str, Any] = {"json": None, "ts": 0.0, "lock": asyncio.Lock()}
+_cars_cache: dict[str, Any] = {"json": None, "ts": 0.0, "lock": asyncio.Lock()}
 _average_prices_cache: dict[str, Any] = {"json": None, "ts": 0.0, "lock": asyncio.Lock()}
 _admin_cache: dict[str, Any] = {"token": None, "value": None, "ts": 0.0}
 _token_cache: dict[str, dict[str, Any]] = {}
@@ -78,22 +82,31 @@ def _clean_json(value: Any) -> Any:
     return value
 
 
+def dumps_json(data: Any) -> str:
+    return json.dumps(_clean_json(data), ensure_ascii=False, separators=(",", ":"), default=_json_default)
+
+
 def api_json(data: Any, status: int = 200) -> web.Response:
-    return web.json_response(
-        _clean_json(data),
-        status=status,
-        dumps=lambda value: json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=_json_default),
-    )
+    return web.Response(text=dumps_json(data), status=status, content_type="application/json", charset="utf-8")
+
+
+async def request_json_value(request: web.Request) -> Any:
+    if "json_body" in request:
+        return request["json_body"]
+    try:
+        body = await request.json(loads=json.loads)
+    except Exception:
+        try:
+            text = await request.text()
+            body = json.loads(text) if text and text.strip() else {}
+        except Exception:
+            body = {}
+    request["json_body"] = body
+    return body
 
 
 async def request_json(request: web.Request) -> dict[str, Any]:
-    if "json_body" in request:
-        body = request["json_body"]
-    else:
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
+    body = await request_json_value(request)
     return body if isinstance(body, dict) else {}
 
 
@@ -103,6 +116,21 @@ def send_error(status: int, message: str) -> web.Response:
 
 def send_success(data: dict[str, Any] | None = None) -> web.Response:
     return api_json({"status": "ok", **(data or {})})
+
+
+@web.middleware
+async def api_error_middleware(request: web.Request, handler):
+    try:
+        return await handler(request)
+    except web.HTTPException as exc:
+        if request.path.startswith("/api/"):
+            return api_json({"status": "error", "message": exc.reason or "http_error"}, status=exc.status)
+        raise
+    except Exception:
+        if request.path.startswith("/api/"):
+            log.exception("API request error")
+            return api_json({"status": "error", "message": "internal_server_error"}, status=500)
+        raise
 
 
 async def get_http_session() -> aiohttp.ClientSession:
@@ -131,6 +159,7 @@ async def ensure_api_indexes() -> None:
         db.MarketPlace.create_index("lastUpdated"),
         db.AveragePrice.create_index("itemName"),
         db.table.create_index("itemKey", unique=True, sparse=True),
+        db.table.create_index("position"),
         db.CfgTokens.create_index([("updatedAtTs", -1), ("createdAtTs", -1)]),
         db.CfgTokens.create_index("tokens.token"),
     )
@@ -902,8 +931,7 @@ async def get_table(request: web.Request) -> web.Response:
         result = await verify_token(body.get("token"), body.get("hwid"))
         if result.get("error"):
             return api_json({"status": "error", "message": result["error"]})
-        table_data = await _collection("table").find({}).to_list(length=None)
-        return api_json({"status": "ok", "table": table_data})
+        return json_text_response(await get_table_json())
     except Exception as exc:
         return api_json({"status": "error", "message": str(exc)})
 
@@ -922,8 +950,7 @@ async def get_analogues(request: web.Request) -> web.Response:
         result = await verify_token(body.get("token"), body.get("hwid"))
         if result.get("error"):
             return api_json({"status": "error", "message": result["error"]})
-        data = await _collection("AnaloguesAks").find({}).to_list(length=None)
-        return api_json({"status": "ok", "analogues": data})
+        return json_text_response(await get_analogues_json())
     except Exception as exc:
         return api_json({"status": "error", "message": str(exc)})
 
@@ -934,8 +961,7 @@ async def get_cars(request: web.Request) -> web.Response:
         result = await verify_token(body.get("token"), body.get("hwid"))
         if result.get("error"):
             return api_json({"status": "error", "message": result["error"]})
-        data = await _collection("Cars").find({}).to_list(length=None)
-        return api_json({"status": "ok", "cars": data})
+        return json_text_response(await get_cars_json())
     except Exception as exc:
         return api_json({"status": "error", "message": str(exc)})
 
@@ -998,26 +1024,67 @@ def _bulk_op(operation: dict[str, Any]) -> Any:
     return UpdateOne(update_one["filter"], update_one["update"], upsert=update_one.get("upsert", False))
 
 
+def invalidate_json_cache(cache: dict[str, Any]) -> None:
+    cache["json"] = None
+    cache["ts"] = 0.0
+
+
 def invalidate_average_prices_cache() -> None:
-    _average_prices_cache["json"] = None
-    _average_prices_cache["ts"] = 0.0
+    invalidate_json_cache(_average_prices_cache)
+
+
+def invalidate_reference_data_cache() -> None:
+    invalidate_json_cache(_table_cache)
+    invalidate_json_cache(_analogues_cache)
+    invalidate_json_cache(_cars_cache)
+
+
+async def get_cached_json(cache: dict[str, Any], ttl_ms: int, loader) -> str:
+    now = time.monotonic() * 1000
+    cached = cache.get("json")
+    if cached and now - float(cache["ts"]) < ttl_ms:
+        return str(cached)
+    async with cache["lock"]:
+        cached = cache.get("json")
+        now = time.monotonic() * 1000
+        if cached and now - float(cache["ts"]) < ttl_ms:
+            return str(cached)
+        payload = dumps_json(await loader())
+        cache["json"] = payload
+        cache["ts"] = now
+        return payload
+
+
+def json_text_response(text: str) -> web.Response:
+    return web.Response(text=text, content_type="application/json", charset="utf-8")
+
+
+async def get_table_json() -> str:
+    async def load() -> dict[str, Any]:
+        data = await _collection("table").find({}, {"_id": 0}).sort("position", 1).to_list(length=None)
+        return {"status": "ok", "table": data}
+    return await get_cached_json(_table_cache, REFERENCE_DATA_CACHE_TTL, load)
+
+
+async def get_analogues_json() -> str:
+    async def load() -> dict[str, Any]:
+        data = await _collection("AnaloguesAks").find({}, {"_id": 0}).to_list(length=None)
+        return {"status": "ok", "analogues": data}
+    return await get_cached_json(_analogues_cache, REFERENCE_DATA_CACHE_TTL, load)
+
+
+async def get_cars_json() -> str:
+    async def load() -> dict[str, Any]:
+        data = await _collection("Cars").find({}, {"_id": 0}).to_list(length=None)
+        return {"status": "ok", "cars": data}
+    return await get_cached_json(_cars_cache, REFERENCE_DATA_CACHE_TTL, load)
 
 
 async def get_average_prices_json() -> str:
-    now = time.monotonic() * 1000
-    cached = _average_prices_cache.get("json")
-    if cached and now - float(_average_prices_cache["ts"]) < AVERAGE_PRICES_CACHE_TTL:
-        return str(cached)
-    async with _average_prices_cache["lock"]:
-        cached = _average_prices_cache.get("json")
-        now = time.monotonic() * 1000
-        if cached and now - float(_average_prices_cache["ts"]) < AVERAGE_PRICES_CACHE_TTL:
-            return str(cached)
-        average_prices = await _collection("AveragePrice").find({}).to_list(length=None)
-        payload = json.dumps({"status": "ok", "averagePrices": _clean_json(average_prices)}, ensure_ascii=False, separators=(",", ":"))
-        _average_prices_cache["json"] = payload
-        _average_prices_cache["ts"] = now
-        return payload
+    async def load() -> dict[str, Any]:
+        average_prices = await _collection("AveragePrice").find({}, {"_id": 0}).to_list(length=None)
+        return {"status": "ok", "averagePrices": average_prices}
+    return await get_cached_json(_average_prices_cache, AVERAGE_PRICES_CACHE_TTL, load)
 
 
 async def get_average_prices(request: web.Request) -> web.Response:
@@ -1026,7 +1093,7 @@ async def get_average_prices(request: web.Request) -> web.Response:
         result = await verify_token(body.get("token"), body.get("hwid"))
         if result.get("error"):
             return api_json({"status": "error", "message": result["error"]})
-        return web.Response(text=await get_average_prices_json(), content_type="application/json", charset="utf-8")
+        return json_text_response(await get_average_prices_json())
     except Exception as exc:
         return api_json({"status": "error", "message": str(exc)})
 
@@ -1184,6 +1251,7 @@ async def sort_table(request: web.Request) -> web.Response:
         except Exception:
             log.exception("Failed to update cars")
 
+        invalidate_reference_data_cache()
         return api_json({"status": "ok", "message": "Tables updated", "itemsCount": len(items)})
     except Exception as exc:
         log.exception("sortTable error")
@@ -1284,6 +1352,7 @@ async def on_api_cleanup(app: web.Application) -> None:
 
 
 def setup_api_routes(app: web.Application) -> None:
+    app.middlewares.append(api_error_middleware)
     app.middlewares.append(lua_crypto_middleware)
     app.on_startup.append(on_api_startup)
     app.on_cleanup.append(on_api_cleanup)
