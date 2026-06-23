@@ -291,6 +291,11 @@ async def _complete_pending(bot: Bot, pending: dict, *, renew: bool, expires_at_
         return current is not None and current.get("status") in {"completed", "processing"}
 
     plan_code = pending["plan_code"]
+    settings = await get_settings()
+    prices_rub = settings.get("prices_rub", {})
+    amount_rub = pending.get("amount_rub")
+    if amount_rub is None:
+        amount_rub = await price_with_active_discount(int(prices_rub.get(plan_code, 0) or 0), plan_code)
     try:
         if renew:
             await renew_latest_purchase(
@@ -313,6 +318,7 @@ async def _complete_pending(bot: Bot, pending: dict, *, renew: bool, expires_at_
                 days=PLAN_DAYS.get(plan_code),
                 payment_method="triboote",
                 expires_at_override=expires_at_override,
+                amount_rub=int(amount_rub or 0),
             )
     except Exception:
         await mark_pending_status(payment_id, "failed")

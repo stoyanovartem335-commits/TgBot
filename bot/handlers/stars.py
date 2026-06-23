@@ -93,4 +93,5 @@ async def on_successful_payment(message: Message) -> None:
         plan_label=PLAN_LABELS.get(plan_code, plan_code),
         days=PLAN_DAYS.get(plan_code),
         payment_method="stars",
+        amount_stars=int(sp.total_amount or 0),
     )

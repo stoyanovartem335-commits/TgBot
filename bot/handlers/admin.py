@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import html
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -17,11 +17,13 @@ from ..database import (
     delete_payment_block,
     get_active_payment_block,
     get_gsheets_request,
+    get_loader_token_counts,
     get_pending,
     get_recent_purchases,
     get_settings,
     list_active_payment_blocks,
     list_gsheets_requests,
+    list_purchases_for_stats,
     list_manual_payment_requests,
     set_payment_block,
     get_total_purchases,
@@ -31,13 +33,20 @@ from ..database import (
 from ..services.api_client import create_subscription_token
 from ..services.payment_review import format_until, method_label, parse_block_duration, user_ref_html
 from ..services.plans import PLAN_CODES, PLAN_DAYS, PLAN_LABELS
-from ..services.settings_service import normalize_discounts
+from ..services.settings_service import get_plans_from_settings, normalize_discounts
 from ..services.token_service import compute_expiration_str, generate_token
 
 log = logging.getLogger(__name__)
 router = Router(name="admin")
 PAYMENT_REQUESTS_PAGE_SIZE = 20
 GSHEETS_REQUESTS_PAGE_SIZE = 10
+MSK = timezone(timedelta(hours=3))
+STATS_PERIODS = {
+    "24h": ("24 часа", timedelta(hours=24)),
+    "7d": ("7 дней", timedelta(days=7)),
+    "30d": ("30 дней", timedelta(days=30)),
+    "all": ("всё время", None),
+}
 
 class AdminFSM(StatesGroup):
     waiting_price_rub = State()
@@ -257,21 +266,94 @@ def _format_paid_at(value: str) -> str:
         return "?"
     try:
         clean = value[:-1] + "+00:00" if value.endswith("Z") else value
-        return datetime.fromisoformat(clean).strftime("%d.%m.%Y | %H:%M")
+        parsed = datetime.fromisoformat(clean)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(MSK).strftime("%d.%m.%Y | %H:%M МСК")
     except Exception:
         try:
             date_part, time_part = value.split("T", 1)
             yyyy, mm, dd = date_part.split("-", 2)
             hh, minute = time_part.split(":", 2)[:2]
-            return f"{dd}.{mm}.{yyyy} | {hh}:{minute}"
+            parsed = datetime(int(yyyy), int(mm), int(dd), int(hh), int(minute), tzinfo=timezone.utc)
+            return parsed.astimezone(MSK).strftime("%d.%m.%Y | %H:%M МСК")
         except Exception:
             return value[:16]
 
 
-async def show_stats_panel(message: Message | None) -> None:
-    total = await get_total_purchases()
+def _stats_period_kb(active: str) -> InlineKeyboardMarkup:
+    def btn(code: str) -> InlineKeyboardButton:
+        title = STATS_PERIODS[code][0]
+        prefix = "✅ " if code == active else ""
+        return InlineKeyboardButton(text=f"{prefix}{title}", callback_data=f"adm:stats:{code}")
+
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [btn("24h"), btn("7d")],
+        [btn("30d"), btn("all")],
+        [_back_kb()],
+    ])
+
+
+async def _purchase_stats(period: str) -> dict:
+    period = period if period in STATS_PERIODS else "all"
+    _, delta = STATS_PERIODS[period]
+    now = datetime.now(timezone.utc)
+    since = now - delta if delta else None
+    plans = await get_plans_from_settings()
+    rub_fallback = {item["code"]: int(item.get("discounted_price_rub") or item.get("price_rub") or 0) for item in plans}
+    stars_fallback = {item["code"]: int(item.get("discounted_price_stars") or item.get("price_stars") or 0) for item in plans}
+    rows = await list_purchases_for_stats(since)
+    sales = len(rows)
+    issued_tokens = 0
+    rub_total = 0
+    stars_total = 0
+    by_method: dict[str, int] = {}
+
+    for row in rows:
+        method = row.get("payment_method") or "?"
+        plan_code = row.get("plan_code") or ""
+        by_method[method] = by_method.get(method, 0) + 1
+        issued_tokens += 1 + (1 if row.get("friend_token") else 0)
+        if method == "stars":
+            stars_total += int(row.get("amount_stars") or stars_fallback.get(plan_code, 0))
+        else:
+            rub_total += int(row.get("amount_rub") or rub_fallback.get(plan_code, 0))
+
+    return {
+        "period": period,
+        "sales": sales,
+        "issued_tokens": issued_tokens,
+        "rub_total": rub_total,
+        "stars_total": stars_total,
+        "by_method": by_method,
+    }
+
+
+async def show_stats_panel(message: Message | None, *, period: str = "all") -> None:
+    period = period if period in STATS_PERIODS else "all"
+    stats = await _purchase_stats(period)
+    day_stats = stats if period == "24h" else await _purchase_stats("24h")
+    week_stats = stats if period == "7d" else await _purchase_stats("7d")
+    token_total, token_active = await get_loader_token_counts()
     recent = await get_recent_purchases(5)
-    text = f"📈 <b>Статистика</b>\n\nВсего покупок: <b>{total}</b>\n\n"
+    period_title = STATS_PERIODS[period][0]
+    text = (
+        "📈 <b>Статистика</b>\n\n"
+        f"Период: <b>{period_title}</b>\n"
+        f"Продано токенов: <b>{stats['sales']}</b>\n"
+        f"Выдано токенов всего: <b>{stats['issued_tokens']}</b>\n"
+        f"Продано на сумму: <b>{stats['rub_total']} ₽</b>\n"
+        f"Продано за Stars: <b>{stats['stars_total']} ⭐</b>\n\n"
+        f"Продано за 24 часа: <b>{day_stats['sales']}</b>\n"
+        f"Продано за 7 дней: <b>{week_stats['sales']}</b>\n\n"
+        f"Токенов в системе: <b>{token_total}</b>\n"
+        f"Активных токенов: <b>{token_active}</b>\n"
+    )
+    if stats["by_method"]:
+        text += "\nСпособы оплаты:\n"
+        for method, count in sorted(stats["by_method"].items(), key=lambda item: item[0]):
+            text += f"  {method_label(method)}: <b>{count}</b>\n"
+    text += "\n"
     if recent:
         text += "Последние покупки:\n"
         for row in recent:
@@ -279,8 +361,7 @@ async def show_stats_panel(message: Message | None) -> None:
             text += f"  {row.get('plan_code', '?')} | {row.get('payment_method', '?')} | {paid_at}\n"
     else:
         text += "Покупок пока нет."
-    kb = InlineKeyboardMarkup(inline_keyboard=[[_back_kb()]])
-    await _edit_or_send(message, text, kb)
+    await _edit_or_send(message, text, _stats_period_kb(period))
 
 
 def _request_status_label(status: str) -> str:
@@ -778,6 +859,15 @@ async def adm_stats(call: CallbackQuery) -> None:
         return
     await call.answer()
     await show_stats_panel(call.message)
+
+
+@router.callback_query(F.data.startswith("adm:stats:"))
+async def adm_stats_period(call: CallbackQuery) -> None:
+    if not _is_admin(call.from_user.id if call.from_user else None):
+        return
+    period = (call.data or "").split(":", 2)[2]
+    await call.answer()
+    await show_stats_panel(call.message, period=period)
 
 
 @router.callback_query(F.data == "adm:gsheets")

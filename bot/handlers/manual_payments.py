@@ -739,6 +739,7 @@ async def on_manual_approve(call: CallbackQuery) -> None:
         plan_label=PLAN_LABELS.get(plan_code, plan_code),
         days=PLAN_DAYS.get(plan_code),
         payment_method=pending.get("payment_method", "manual"),
+        amount_rub=int(pending.get("amount_rub") or 0),
     )
     await update_pending_fields(payment_id, {
         "status": "completed",

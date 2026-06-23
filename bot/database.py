@@ -52,6 +52,8 @@ async def init_db() -> None:
     await _db.bot_purchases.create_index("user_id")
     await _db.bot_purchases.create_index("token", unique=True)
     await _db.bot_purchases.create_index([("user_id", 1), ("delivery_status", 1)])
+    await _db.bot_purchases.create_index("paid_at")
+    await _db.bot_purchases.create_index([("payment_method", 1), ("paid_at", -1)])
     await _db.bot_pending_payments.create_index("payment_id", unique=True)
     await _db.bot_pending_payments.create_index("user_id")
     await _db.bot_pending_payments.create_index("external_ref")
@@ -116,6 +118,8 @@ async def insert_purchase(
     friend_token: str | None,
     payment_method: str,
     expires_at: datetime | None,
+    amount_rub: int | None = None,
+    amount_stars: int | None = None,
 ) -> tuple[datetime, datetime | None]:
     paid_at = datetime.now(timezone.utc)
     db = await get_db()
@@ -126,6 +130,8 @@ async def insert_purchase(
         "token": token,
         "friend_token": friend_token,
         "payment_method": payment_method,
+        "amount_rub": int(amount_rub) if amount_rub is not None else None,
+        "amount_stars": int(amount_stars) if amount_stars is not None else None,
         "paid_at": paid_at.isoformat(),
         "expires_at": expires_at.isoformat() if expires_at else None,
         "delivery_status": "pending",
@@ -621,3 +627,58 @@ async def get_recent_purchases(limit: int = 10) -> list:
     db = await get_db()
     cursor = db.bot_purchases.find({}, sort=[("paid_at", -1)], limit=limit)
     return await cursor.to_list(length=limit)
+
+
+async def list_purchases_for_stats(since: datetime | None = None) -> list[dict]:
+    db = await get_db()
+    query = {}
+    if since is not None:
+        query["paid_at"] = {"$gte": since.astimezone(timezone.utc).isoformat()}
+    cursor = db.bot_purchases.find(
+        query,
+        {
+            "plan_code": 1,
+            "payment_method": 1,
+            "paid_at": 1,
+            "token": 1,
+            "friend_token": 1,
+            "amount_rub": 1,
+            "amount_stars": 1,
+        },
+        sort=[("paid_at", -1)],
+    )
+    items = []
+    async for row in cursor:
+        items.append(row)
+    return items
+
+
+def _parse_loader_expiration(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    for fmt in ("%d.%m.%Y", "%d.%m.%Y %H:%M"):
+        try:
+            parsed = datetime.strptime(str(value).strip(), fmt)
+            return parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+async def get_loader_token_counts() -> tuple[int, int]:
+    db = await get_db()
+    total = await db.loader_keys.count_documents({})
+    now = datetime.now(timezone.utc)
+    active = 0
+    cursor = db.loader_keys.find({}, {"subscription_expiration": 1})
+    async for row in cursor:
+        expires_at = _parse_loader_expiration(row.get("subscription_expiration"))
+        if expires_at is None or expires_at >= now:
+            active += 1
+    return total, active

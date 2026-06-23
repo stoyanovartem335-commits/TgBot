@@ -81,6 +81,8 @@ async def deliver_purchase(
     days: int | None,
     payment_method: str,
     expires_at_override=None,
+    amount_rub: int | None = None,
+    amount_stars: int | None = None,
 ) -> dict[str, str | None]:
     method_label = PAYMENT_METHOD_LABEL.get(payment_method, payment_method)
 
@@ -123,6 +125,8 @@ async def deliver_purchase(
         friend_token=friend_token,
         payment_method=payment_method,
         expires_at=expires_at,
+        amount_rub=amount_rub,
+        amount_stars=amount_stars,
     )
 
     expiry_line = (
